@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Samvidha Attendance - Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="flex items-center justify-center min-h-screen">
+  <div class="glass-container p-8 sm:p-10 rounded-2xl w-full max-w-md fade-in mx-2 sm:mx-auto">
+    <h1 class="text-3xl sm:text-4xl font-bold mb-8 text-center text-white">Samvidha Attendance</h1>
+    <form id="attendanceForm" class="space-y-6">
+      <div>
+        <label for="username" class="block text-sm font-medium text-gray-200">Username</label>
+        <input type="text" id="username" name="username" class="mt-1 p-3 w-full bg-transparent border border-gray-300/20 text-white rounded-lg focus:ring-2 focus:ring-blue-500 placeholder-gray-400" placeholder="Enter your username" required>
+      </div>
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-200">Password</label>
+        <input type="password" id="password" name="password" class="mt-1 p-3 w-full bg-transparent border border-gray-300/20 text-white rounded-lg focus:ring-2 focus:ring-blue-500 placeholder-gray-400" placeholder="Enter your password" required>
+      </div>
+      <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition duration-300 text-base sm:text-lg">Get Attendance</button>
+    </form>
+    <p id="error" class="text-red-400 mt-4 hidden text-center"></p>
+  </div>
+
+  <!-- Loading Animation -->
+  <div id="loader" class="loader-overlay hidden">
+    <div class="loader"></div>
+    <p class="loader-text">Fetching your attendance...</p>
+  </div>
+
+  <script>
+    document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorP = document.getElementById('error');
+      const loader = document.getElementById('loader');
+
+      errorP.classList.add('hidden');
+      loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch('http://localhost:3000/fetch-attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          loader.classList.add('hidden');
+          errorP.textContent = data.error;
+          errorP.classList.remove('hidden');
+          return;
+        }
+
+        // Save credentials to localStorage
+        localStorage.setItem('username', username);
+        localStorage.setItem('password', password);
+        localStorage.setItem('attendanceData', JSON.stringify(data));
+        window.location.href = 'dashboard.html';
+      } catch (error) {
+        loader.classList.add('hidden');
+        errorP.textContent = 'An error occurred while fetching data. Please try again.';
+        errorP.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Samvidha Attendance - Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="min-h-screen">
+  <!-- Credentials Modal -->
+  <div id="credentialsModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50 hidden">
+    <div class="bg-white rounded-lg p-8 w-full max-w-xs shadow-lg">
+      <h2 class="text-xl font-bold mb-4 text-gray-800">Enter Credentials</h2>
+      <form id="credentialsForm" class="space-y-4">
+        <input id="modalUsername" type="text" placeholder="Username" class="w-full px-3 py-2 border rounded focus:outline-none" required />
+        <input id="modalPassword" type="password" placeholder="Password" class="w-full px-3 py-2 border rounded focus:outline-none" required />
+        <div id="credentialsError" class="text-red-500 text-sm hidden">Invalid username or password</div>
+        <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded font-semibold">Save</button>
+      </form>
+    </div>
+  </div>
+  <!-- Loading Animation -->
+  <div id="loadingAnimation" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50 hidden">
+    <div class="flex flex-col items-center">
+      <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+      <p class="text-white mt-4 text-lg">Loading course data...</p>
+    </div>
+  </div>
+  <!-- Navigation Bar -->
+  <nav class="p-4 sticky top-0 z-40">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl sm:text-3xl font-bold text-white">Samvidha Dashboard</h1>
+        <div id="userInfo" class="text-sm text-gray-300 hidden">
+          <span class="text-gray-400">Logged in as:</span>
+          <span id="displayUsername" class="ml-1 font-medium text-blue-300"></span>
+        </div>
+      </div>
+      <div class="flex space-x-3">
+        <button id="biometricTab" class="tab-button tab-active">Biometric</button>
+        <button id="classTab" class="tab-button tab-inactive">Class</button>
+        <button id="logoutBtn" class="button logout-button">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container mx-auto mt-8 px-4">
+    <!-- Biometric Attendance Section -->
+    <div id="biometricSection" class="fade-in">
+      <h2 class="text-3xl sm:text-4xl font-semibold text-white mb-8 text-center">Biometric Attendance</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Summary Cards -->
+        <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="glass-container p-6 card">
+            <h3 class="text-lg font-medium text-gray-200">Total Days</h3>
+            <p id="totalClasses" class="text-2xl font-bold text-blue-300 mt-2"></p>
+          </div>
+          <div class="glass-container p-6 card">
+            <h3 class="text-lg font-medium text-gray-200">Days Present</h3>
+            <p id="present" class="text-2xl font-bold text-green-300 mt-2"></p>
+          </div>
+          <div class="glass-container p-6 card">
+            <h3 class="text-lg font-medium text-gray-200">Days Absent</h3>
+            <p id="absent" class="text-2xl font-bold text-red-300 mt-2"></p>
+          </div>
+          <div class="glass-container p-6 card">
+            <h3 class="text-lg font-medium text-gray-200">Attendance Percentage</h3>
+            <p id="attendancePercentage" class="text-2xl font-bold text-blue-300 mt-2"></p>
+          </div>
+          <div class="glass-container p-6 card">
+            <h3 class="text-lg font-medium text-gray-200">Days Needed for 75%</h3>
+            <p id="daysNeeded" class="text-2xl font-bold text-orange-300 mt-2"></p>
+          </div>
+        </div>
+        <!-- Circular Chart -->
+        <div class="glass-container p-6 flex justify-center items-center card">
+          <div class="chart-container">
+            <canvas id="attendanceChart"></canvas>
+            <div id="chartCenterText" class="chart-center-text"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Class Attendance Section -->
+    <div id="classSection" class="hidden fade-in">
+      <h2 class="text-3xl sm:text-4xl font-semibold text-white mb-8 text-center">Class Attendance</h2>
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <!-- Overall Attendance Card & Circular Chart -->
+        <div class="flex flex-col gap-6 lg:col-span-1">
+          <div class="glass-container p-6 card flex flex-col items-center justify-center">
+            <h3 class="text-xl font-medium text-gray-200 mb-2">Overall Course Attendance</h3>
+            <div class="w-40 h-40 flex items-center justify-center">
+              <canvas id="overallAttendanceChart"></canvas>
+              <div id="overallChartCenterText" class="absolute text-2xl font-bold text-blue-400"></div>
+            </div>
+          </div>
+          <div class="glass-container p-4 card flex flex-col items-center justify-center">
+            <div class="flex flex-col sm:flex-row gap-4 w-full justify-between">
+              <div class="flex-1 text-center">
+                <div class="text-sm text-gray-300">Total Classes</div>
+                <div id="overallTotalClasses" class="text-lg font-bold text-blue-300"></div>
+              </div>
+              <div class="flex-1 text-center">
+                <div class="text-sm text-gray-300">Present</div>
+                <div id="overallPresentClasses" class="text-lg font-bold text-green-300"></div>
+              </div>
+              <div class="flex-1 text-center">
+                <div class="text-sm text-gray-300">Absent</div>
+                <div id="overallAbsentClasses" class="text-lg font-bold text-red-300"></div>
+              </div>
+            </div>
+            <div class="mt-4 w-full text-center">
+              <div class="text-sm text-gray-300">Classes Needed for 75%</div>
+              <div id="overallClassesNeeded" class="text-lg font-bold text-orange-300"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Topic Details Table -->
+        <div class="glass-container p-6 card lg:col-span-2 overflow-x-auto">
+          <h3 class="text-xl font-medium text-gray-200 mb-4">Topic Details</h3>
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-gray-200 border-b border-gray-700">
+                <th class="px-2 py-2 text-left">Topic</th>
+                <th class="px-2 py-2 text-left">Date</th>
+                <th class="px-2 py-2 text-left">Attendance</th>
+                <th class="px-2 py-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody id="subjectTableBody">
+              <!-- Topic rows will be populated here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Check if attendance data exists
+    const attendanceData = JSON.parse(localStorage.getItem('attendanceData'));
+    if (!attendanceData) {
+      window.location.href = 'index.html';
+    }
+
+    // Log attendance data for debugging
+    console.log('Attendance Data:', attendanceData);
+
+    // Populate Summary Cards
+    document.getElementById('totalClasses').textContent = attendanceData.totalClasses;
+    document.getElementById('present').textContent = attendanceData.present;
+    document.getElementById('absent').textContent = attendanceData.absent;
+    document.getElementById('attendancePercentage').textContent = attendanceData.attendancePercentage + '%';
+    document.getElementById('daysNeeded').textContent = attendanceData.daysNeeded;
+
+    // Static Circular Chart
+    const ctx = document.getElementById('attendanceChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Present', 'Absent'],
+        datasets: [{
+          data: [attendanceData.present, attendanceData.absent],
+          backgroundColor: [
+            'linear-gradient(90deg, #10b981, #34d399)', // Gradient for Present
+            'linear-gradient(90deg, #ef4444, #f87171)'  // Gradient for Absent
+          ].map(gradient => {
+            const grad = ctx.createLinearGradient(0, 0, 200, 0);
+            const [start, end] = gradient.match(/#[\da-f]{6}/gi);
+            grad.addColorStop(0, start);
+            grad.addColorStop(1, end);
+            return grad;
+          }),
+          borderWidth: 2,
+          borderColor: 'rgba(255, 255, 255, 0.3)',
+          hoverOffset: 0 // Disable hover animation
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '70%',
+        animation: false, // Disable all animations
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              font: { size: 12 },
+              color: '#d1d5db',
+              padding: 20
+            }
+          },
+          title: {
+            display: true,
+            text: 'Attendance Breakdown',
+            font: { size: 16, weight: 'bold' },
+            color: '#ffffff',
+            padding: { top: 10, bottom: 20 }
+          },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: function(context) {
+                const label = context.label || '';
+                const value = context.raw || 0;
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = ((value / total) * 100).toFixed(1);
+                return `${label}: ${value} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      },
+      plugins: [{
+        id: 'centerText',
+        afterDraw(chart) {
+          const { ctx, width, height } = chart;
+          ctx.save();
+          ctx.font = 'bold 18px Inter';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#3b82f6';
+          const percentage = attendanceData.attendancePercentage;
+          ctx.fillText(`${percentage}%`, width / 2, height / 2);
+          ctx.restore();
+        }
+      }]
+    });
+
+    // Class Attendance Chart
+    let subjectChart = null;
+
+    // Credentials Modal Logic
+    function showCredentialsModal() {
+      document.getElementById('credentialsModal').classList.remove('hidden');
+      document.getElementById('credentialsError').classList.add('hidden');
+      // Clear the form fields
+      document.getElementById('modalUsername').value = '';
+      document.getElementById('modalPassword').value = '';
+    }
+
+    function hideCredentialsModal() {
+      document.getElementById('credentialsModal').classList.add('hidden');
+    }
+
+    function updateUserDisplay() {
+      const username = localStorage.getItem('username');
+      const userInfo = document.getElementById('userInfo');
+      const displayUsername = document.getElementById('displayUsername');
+      
+      if (username) {
+        userInfo.classList.remove('hidden');
+        displayUsername.textContent = username.toUpperCase();
+      } else {
+        userInfo.classList.add('hidden');
+      }
+    }
+
+    function checkCredentials() {
+      const username = localStorage.getItem('username');
+      const password = localStorage.getItem('password');
+      if (!username || !password) {
+        showCredentialsModal();
+        return false;
+      }
+      updateUserDisplay();
+      return true;
+    }
+
+    document.getElementById('credentialsForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const username = document.getElementById('modalUsername').value.trim();
+      const password = document.getElementById('modalPassword').value.trim();
+      
+      if (username && password) {
+        showLoading();
+        try {
+          const response = await fetch('http://localhost:3000/fetch-class-attendance', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+          });
+
+          if (!response.ok) {
+            hideLoading();
+            document.getElementById('credentialsError').classList.remove('hidden');
+            return;
+          }
+
+          localStorage.setItem('username', username);
+          localStorage.setItem('password', password);
+          hideCredentialsModal();
+          updateUserDisplay();
+          fetchClassAttendance();
+        } catch (error) {
+          hideLoading();
+          document.getElementById('credentialsError').classList.remove('hidden');
+        }
+      }
+    });
+
+    // Loading Animation Functions
+    function showLoading() {
+      document.getElementById('loadingAnimation').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingAnimation').classList.add('hidden');
+    }
+
+    async function fetchClassAttendance() {
+      if (!checkCredentials()) return;
+      
+      showLoading();
+      try {
+        const response = await fetch('http://localhost:3000/fetch-class-attendance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: localStorage.getItem('username'),
+            password: localStorage.getItem('password')
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          if (errorData.error === 'Invalid credentials') {
+            hideLoading(); // Hide loading before showing credentials modal
+            showCredentialsModal();
+            document.getElementById('credentialsError').classList.remove('hidden');
+            throw new Error('Invalid credentials');
+          }
+          throw new Error(errorData.error || 'Failed to fetch class attendance');
+        }
+
+        const data = await response.json();
+        if (!data.classAttendanceData || data.classAttendanceData.length === 0) {
+          throw new Error('No attendance data available');
+        }
+
+        // Clear existing data before updating
+        const tableBody = document.getElementById('subjectTableBody');
+        tableBody.innerHTML = '';
+        
+        if (subjectChart) {
+          subjectChart.destroy();
+          subjectChart = null;
+        }
+
+        updateClassAttendanceUI(data.classAttendanceData);
+      } catch (error) {
+        console.error('Error fetching class attendance:', error);
+        const tableBody = document.getElementById('subjectTableBody');
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="3" class="px-4 py-4 text-center text-red-400">
+              ${error.message || 'Failed to fetch class attendance data. Please try again.'}
+            </td>
+          </tr>
+        `;
+        
+        if (subjectChart) {
+          subjectChart.destroy();
+          subjectChart = null;
+        }
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function updateClassAttendanceUI(classAttendanceData) {
+      // Calculate overall course attendance and summary stats
+      let totalAttended = 0, totalClasses = 0, totalAbsent = 0;
+      classAttendanceData.forEach(subject => {
+        totalAttended += subject.classesAttended;
+        totalClasses += subject.totalClasses;
+        totalAbsent += subject.absent;
+      });
+      const overall = totalClasses > 0 ? ((totalAttended / totalClasses) * 100).toFixed(2) : '0.00';
+
+      // Set summary stats only if elements exist
+      const overallCourseAttendanceElem = document.getElementById('overallCourseAttendance');
+      if (overallCourseAttendanceElem) overallCourseAttendanceElem.textContent = overall + '%';
+      const overallTotalClassesElem = document.getElementById('overallTotalClasses');
+      if (overallTotalClassesElem) overallTotalClassesElem.textContent = totalClasses;
+      const overallPresentClassesElem = document.getElementById('overallPresentClasses');
+      if (overallPresentClassesElem) overallPresentClassesElem.textContent = totalAttended;
+      const overallAbsentClassesElem = document.getElementById('overallAbsentClasses');
+      if (overallAbsentClassesElem) overallAbsentClassesElem.textContent = totalAbsent;
+
+      // Calculate classes needed for 75%
+      let classesNeeded = 0;
+      if (overall < 75 && totalClasses > 0) {
+        classesNeeded = Math.ceil((0.75 * totalClasses - totalAttended) / 0.25);
+        if (classesNeeded < 0) classesNeeded = 0;
+      }
+      const overallClassesNeededElem = document.getElementById('overallClassesNeeded');
+      if (overallClassesNeededElem) overallClassesNeededElem.textContent = classesNeeded;
+
+      // Render circular chart for overall attendance
+      if (window.overallAttendanceChartInstance) {
+        window.overallAttendanceChartInstance.destroy();
+      }
+      const ctx = document.getElementById('overallAttendanceChart').getContext('2d');
+      window.overallAttendanceChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Present', 'Absent'],
+          datasets: [{
+            data: [totalAttended, totalAbsent],
+            backgroundColor: [
+              'rgba(16, 185, 129, 0.8)', // green
+              'rgba(239, 68, 68, 0.8)'   // red
+            ],
+            borderColor: [
+              'rgb(16, 185, 129)',
+              'rgb(239, 68, 68)'
+            ],
+            borderWidth: 2
+          }]
+        },
+        options: {
+          cutout: '70%',
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.label || '';
+                  const value = context.raw || 0;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                  return `${label}: ${value} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        },
+        plugins: [{
+          id: 'centerText',
+          afterDraw(chart) {
+            const { ctx, width, height } = chart;
+            ctx.save();
+            ctx.font = 'bold 22px Inter';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#3b82f6';
+            ctx.clearRect(width/2-40, height/2-20, 80, 40);
+            ctx.fillText(`${overall}%`, width / 2, height / 2);
+            ctx.restore();
+          }
+        }]
+      });
+
+      // Update topic table
+      const tableBody = document.getElementById('subjectTableBody');
+      tableBody.innerHTML = '';
+      classAttendanceData.forEach(subject => {
+        const row = document.createElement('tr');
+        row.className = 'text-gray-300 border-b border-gray-700 hover:bg-gray-700/30';
+        const statusClass = subject.percentage >= 75 ? 'text-green-400' : 'text-red-400';
+        const statusText = subject.percentage >= 75 ? 'PRESENT' : 'ABSENT';
+        row.innerHTML = `
+          <td class="px-2 py-2">${subject.subjectName}</td>
+          <td class="px-2 py-2">${subject.date ? subject.date : '-'}</td>
+          <td class="px-2 py-2">
+            <div class="flex flex-col">
+              <span>${subject.percentage}%</span>
+              <span class="text-xs text-gray-400">${subject.attendanceInfo}</span>
+            </div>
+          </td>
+          <td class="px-2 py-2 ${statusClass}">${statusText}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // Tab Navigation
+    const biometricTab = document.getElementById('biometricTab');
+    const classTab = document.getElementById('classTab');
+    const biometricSection = document.getElementById('biometricSection');
+    const classSection = document.getElementById('classSection');
+
+    biometricTab.addEventListener('click', () => {
+      biometricTab.classList.remove('tab-inactive');
+      biometricTab.classList.add('tab-active');
+      classTab.classList.remove('tab-active');
+      classTab.classList.add('tab-inactive');
+      biometricSection.classList.remove('hidden');
+      classSection.classList.add('hidden');
+    });
+
+    classTab.addEventListener('click', () => {
+      classTab.classList.remove('tab-inactive');
+      classTab.classList.add('tab-active');
+      biometricTab.classList.remove('tab-active');
+      biometricTab.classList.add('tab-inactive');
+      classSection.classList.remove('hidden');
+      biometricSection.classList.add('hidden');
+      
+      // Always fetch fresh data when switching to class tab
+      fetchClassAttendance();
+    });
+
+    // Logout Functionality
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      if (subjectChart) {
+        subjectChart.destroy();
+        subjectChart = null;
+      }
+      const tableBody = document.getElementById('subjectTableBody');
+      tableBody.innerHTML = '';
+      
+      localStorage.removeItem('attendanceData');
+      localStorage.removeItem('username');
+      localStorage.removeItem('password');
+      updateUserDisplay();
+      window.location.href = 'index.html';
+    });
+
+    // Clear any existing data on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      if (subjectChart) {
+        subjectChart.destroy();
+        subjectChart = null;
+      }
+      const tableBody = document.getElementById('subjectTableBody');
+      tableBody.innerHTML = '';
+      checkCredentials();
+      updateUserDisplay();
+    });
+  </script>
+  <style>
+    /* Mobile-specific styles */
+    @media (max-width: 640px) {
+      /* Header and Navigation */
+      nav .container {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+      }
+      
+      nav h1 {
+        font-size: 1.5rem !important;
+      }
+      
+      .flex.space-x-3 {
+        width: 100%;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+      
+      .tab-button, .logout-button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+      }
+
+      /* Chart Responsiveness */
+      .chart-container {
+        width: 100% !important;
+        height: 200px !important;
+        min-width: 0 !important;
+        margin: 0 auto;
+      }
+
+      #attendanceChart, #overallAttendanceChart {
+        max-width: 100% !important;
+        height: auto !important;
+      }
+
+      /* Chart Center Text */
+      .chart-center-text {
+        font-size: 1rem !important;
+      }
+
+      /* Grid Layouts */
+      #classSection .grid, #biometricSection .grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+      }
+
+      /* Card Adjustments */
+      .glass-container.card {
+        padding: 1rem !important;
+        margin-bottom: 1rem !important;
+        min-width: 0 !important;
+      }
+
+      /* Typography */
+      #classSection h2, #biometricSection h2 {
+        font-size: 1.5rem !important;
+        margin-bottom: 1rem !important;
+      }
+
+      /* Table Adjustments */
+      #classSection table, #biometricSection table {
+        font-size: 0.875rem !important;
+      }
+
+      /* Summary Cards */
+      .text-2xl {
+        font-size: 1.25rem !important;
+      }
+
+      .text-lg {
+        font-size: 1rem !important;
+      }
+
+      /* Chart Legend */
+      .chartjs-legend {
+        font-size: 0.75rem !important;
+        padding: 0.5rem !important;
+      }
+
+      /* Username display */
+      #userInfo {
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+      }
+    }
+
+    /* Tablet-specific styles */
+    @media (min-width: 641px) and (max-width: 1024px) {
+      .chart-container {
+        width: 90% !important;
+        height: 250px !important;
+      }
+
+      nav .container {
+        padding: 0 1rem;
+      }
+
+      .tab-button, .logout-button {
+        padding: 0.5rem 1rem;
+      }
+    }
+
+    /* Keep all original desktop styles as they were */
+
+    /* Loading Animation Styles */
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .animate-spin {
+      animation: spin 1s linear infinite;
+    }
+
+    #loadingAnimation {
+      backdrop-filter: blur(4px);
+    }
+
+    /* Username display styles */
+    #userInfo {
+      display: flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 0.375rem;
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</body>
+</html>
