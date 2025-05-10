@@ -5,33 +5,11 @@ services:
     region: oregon  # Specify a region for better performance
     plan: starter   # Specify the plan type
     buildCommand: |
-      # Update package lists and install dependencies
-      apt-get update && apt-get install -y \
-        wget \
-        gnupg2 \
-        ca-certificates \
-        fonts-ipafont-gothic \
-        fonts-wqy-zenhei \
-        fonts-thai-tlwg \
-        fonts-kacst \
-        fonts-freefont-ttf \
-        --no-install-recommends
-
-      # Add Chrome repository
+      apt-get update && apt-get install -y wget gnupg2 ca-certificates
       wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
       echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
-
-      # Install Chrome
-      apt-get update && apt-get install -y google-chrome-stable --no-install-recommends
-
-      # Clean up to reduce image size
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* && \
-      rm -rf /tmp/* && \
-      rm -rf /var/tmp/*
-
-      # Install Node.js dependencies
-      npm ci --production
+      apt-get update && apt-get install -y google-chrome-stable
+      npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV

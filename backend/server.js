@@ -50,11 +50,9 @@ app.use(helmet({
 app.use(compression());
 app.use(morgan('combined'));
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : 'http://localhost:3000',
+  origin: '*',  // Allow all origins in development
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -92,6 +90,7 @@ async function loginToSamvidha(username, password) {
         '--window-size=1920x1080',
         '--disable-web-security',
         '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials'
       ],
       ignoreHTTPSErrors: true,
       timeout: 30000
@@ -99,7 +98,7 @@ async function loginToSamvidha(username, password) {
 
     // Add executable path for production
     if (process.env.NODE_ENV === 'production') {
-      launchOptions.executablePath = process.env.CHROME_BIN;
+      launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/google-chrome';
     }
 
     browser = await puppeteer.launch(launchOptions);
@@ -112,39 +111,19 @@ async function loginToSamvidha(username, password) {
     page.setDefaultNavigationTimeout(30000);
     page.setDefaultTimeout(30000);
 
-    // Enable request interception for better performance
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      if (['image', 'stylesheet', 'font'].includes(request.resourceType())) {
-        request.abort();
-      } else {
-        request.continue();
-      }
+    // Navigate to login page
+    await page.goto('https://samvidha.iare.ac.in/', { 
+      waitUntil: 'networkidle2',
+      timeout: 30000
     });
 
-    // Navigate to login page with retry mechanism
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        await page.goto('https://samvidha.iare.ac.in/', { 
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        });
-        break;
-      } catch (error) {
-        retries--;
-        if (retries === 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-    }
-
-    // Enter credentials with validation
+    // Enter credentials
     await page.waitForSelector('input[name="txt_uname"]', { timeout: 10000 });
     await page.type('input[name="txt_uname"]', username);
     await page.type('input[name="txt_pwd"]', password);
     await page.click('button#but_submit');
 
-    // Wait for navigation with timeout
+    // Wait for navigation
     await page.waitForNavigation({ 
       waitUntil: 'networkidle2',
       timeout: 30000

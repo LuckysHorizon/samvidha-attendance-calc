@@ -32,6 +32,11 @@
   </div>
 
   <script>
+    // Determine the API URL based on the environment
+    const API_URL = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3000'
+      : window.location.origin;
+
     document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -44,19 +49,21 @@
       loader.classList.remove('hidden');
 
       try {
-        const response = await fetch('http://localhost:3000/fetch-attendance', {
+        const response = await fetch('/fetch-attendance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
 
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch attendance data');
+        }
+
         const data = await response.json();
 
         if (data.error) {
-          loader.classList.add('hidden');
-          errorP.textContent = data.error;
-          errorP.classList.remove('hidden');
-          return;
+          throw new Error(data.error);
         }
 
         // Save credentials to localStorage
@@ -65,8 +72,9 @@
         localStorage.setItem('attendanceData', JSON.stringify(data));
         window.location.href = 'dashboard.html';
       } catch (error) {
+        console.error('Error:', error);
         loader.classList.add('hidden');
-        errorP.textContent = 'An error occurred while fetching data. Please try again.';
+        errorP.textContent = error.message || 'An error occurred while fetching data. Please try again.';
         errorP.classList.remove('hidden');
       }
     });
