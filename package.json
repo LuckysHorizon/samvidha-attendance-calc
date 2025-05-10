@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "build": "npm ci --production",
+    "build": "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm ci --production",
     "prod": "NODE_ENV=production node backend/server.js",
-    "test:prod": "node test-prod.js"
+    "test:prod": "node test-prod.js",
+    "postinstall": "mkdir -p logs"
   },
   "dependencies": {
     "attendance-calculator": "file:",
@@ -27,5 +28,6 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "private": true
 }

@@ -1,29 +1,26 @@
 services:
   - type: web
     name: attendance-calculator
-    env: node
-    region: oregon  # Specify a region for better performance
-    plan: free   # Specify the plan type
+    runtime: node
+    region: oregon
+    plan: free
     buildCommand: |
-      apt-get update && apt-get install -y \
-      chromium \
-      chromium-driver \
-      fonts-ipafont-gothic \
-      fonts-wqy-zenhei \
-      fonts-thai-tlwg \
-      fonts-kacst \
-      fonts-freefont-ttf \
-      --no-install-recommends \
-      && rm -rf /var/lib/apt/lists/* \
-      && npm ci --production
-    startCommand: node backend/server.js
+      # Install Chrome dependencies
+      apt-get update && apt-get install -y wget gnupg2 ca-certificates
+      wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
+      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
+      apt-get update && apt-get install -y google-chrome-stable --no-install-recommends
+      apt-get clean && rm -rf /var/lib/apt/lists/*
+      # Install Node.js dependencies with Puppeteer skip
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm ci --production
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
       - key: CHROME_BIN
-        value: /usr/bin/chromium
+        value: /usr/bin/google-chrome
       - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
         value: "true"
       - key: PUPPETEER_EXECUTABLE_PATH
@@ -58,14 +55,13 @@ services:
       name: logs
       mountPath: /app/logs
       sizeGB: 1
-    env: node
     buildFilter:
       paths:
         - package.json
         - package-lock.json
         - backend/**
         - frontend/**
-    headers:
+    securityHeaders:
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
@@ -77,4 +73,4 @@ services:
         value: 1; mode=block
       - path: /*
         name: Strict-Transport-Security
-        value: max-age=31536000; includeSubDomains 
+        value: max-age=31536000; includeSubDomains

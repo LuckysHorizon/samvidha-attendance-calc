@@ -6,6 +6,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 const winston = require('winston');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 // Configure logger with more detailed format
@@ -19,23 +20,30 @@ const logger = winston.createLogger({
   defaultMeta: { service: 'attendance-calculator' },
   transports: [
     new winston.transports.File({ 
-      filename: 'error.log', 
+      filename: path.join(process.env.LOG_FILE_PATH || './logs', 'error.log'), 
       level: 'error',
       maxsize: 5242880, // 5MB
       maxFiles: 5
     }),
     new winston.transports.File({ 
-      filename: 'combined.log',
+      filename: path.join(process.env.LOG_FILE_PATH || './logs', 'combined.log'),
       maxsize: 5242880, // 5MB
       maxFiles: 5
     })
   ]
 });
 
+// Add console transport in development
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
     format: winston.format.simple()
   }));
+}
+
+// Create logs directory if it doesn't exist
+const logDir = process.env.LOG_FILE_PATH || './logs';
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
 }
 
 const app = express();
@@ -330,19 +338,24 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Error handling middleware with detailed logging
+// Update error handling middleware with better logging
 app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', {
+  const errorDetails = {
     error: err.message,
     stack: err.stack,
     path: req.path,
     method: req.method,
-    ip: req.ip
-  });
+    ip: req.ip,
+    timestamp: new Date().toISOString()
+  };
   
-  res.status(500).json({
+  logger.error('Unhandled error:', errorDetails);
+  
+  // Send appropriate error response
+  res.status(err.status || 500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : err.message
+    message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : err.message,
+    requestId: req.id // Add request ID for tracking
   });
 });
 
@@ -354,18 +367,25 @@ const server = app.listen(port, () => {
   process.exit(1);
 });
 
-// Graceful shutdown with timeout
+// Update graceful shutdown with better logging
 const gracefulShutdown = async () => {
-  logger.info('Received shutdown signal');
+  logger.info('Received shutdown signal', {
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
   
   server.close(() => {
-    logger.info('HTTP server closed');
+    logger.info('HTTP server closed', {
+      timestamp: new Date().toISOString()
+    });
     process.exit(0);
   });
 
   // Force shutdown after 10 seconds
   setTimeout(() => {
-    logger.error('Could not close connections in time, forcefully shutting down');
+    logger.error('Could not close connections in time, forcefully shutting down', {
+      timestamp: new Date().toISOString()
+    });
     process.exit(1);
   }, 10000);
 };
