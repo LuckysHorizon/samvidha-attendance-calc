@@ -36,19 +36,19 @@ services:
       - key: LOG_FILE_PATH
         value: ./logs
       - key: NAVIGATION_TIMEOUT
-        value: "30000"
+        value: "60000"
       - key: REQUEST_TIMEOUT
-        value: "30000"
+        value: "60000"
       - key: BROWSER_TIMEOUT
-        value: "30000"
+        value: "60000"
       - key: MAX_MEMORY_RESTART
         value: "1G"
       - key: SAMVIDHA_URL
         value: https://samvidha.iare.ac.in/
       - key: SAMVIDHA_LOGIN_TIMEOUT
-        value: "30000"
+        value: "60000"
       - key: SAMVIDHA_NAVIGATION_TIMEOUT
-        value: "30000"
+        value: "60000"
     healthCheckPath: /health
     autoDeploy: true
     disk:
@@ -61,16 +61,3 @@ services:
         - package-lock.json
         - backend/**
         - frontend/**
-    securityHeaders:
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: X-XSS-Protection
-        value: 1; mode=block
-      - path: /*
-        name: Strict-Transport-Security
-        value: max-age=31536000; includeSubDomains
