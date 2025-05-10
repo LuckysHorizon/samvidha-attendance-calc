@@ -9,7 +9,7 @@
     "build": "npm install --production",
     "prod": "NODE_ENV=production node backend/server.js",
     "test:prod": "node test-prod.js",
-    "postinstall": "mkdir -p logs"
+    "postinstall": "node -e \"try { require('fs').mkdirSync('logs', { recursive: true }); } catch(e) { if(e.code !== 'EEXIST') throw e; }\""
   },
   "dependencies": {
     "attendance-calculator": "file:",

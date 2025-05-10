@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
+const { getBrowserConfig } = require('./config/browser');
 require('dotenv').config();
 
 // Configure logger with more detailed format
@@ -55,80 +56,43 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Middleware
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+app.use(express.json());
 app.use(compression());
 app.use(morgan('combined'));
-app.use(cors({
-  origin: '*',  // Allow all origins in development
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: true
-}));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files from the frontend directory
-app.use(express.static(path.join(__dirname, '../frontend'), {
-  maxAge: '1d',
-  etag: true
-}));
-
-// Rate limiting middleware with production-specific settings
-const rateLimit = require('express-rate-limit');
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 50 : 100,
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' });
 });
-app.use(limiter);
 
 // Helper function to login and get browser session with improved error handling
 async function loginToSamvidha(username, password) {
   let browser;
   try {
-    const launchOptions = {
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1920x1080',
-      ],
-      ignoreHTTPSErrors: true
-    };
-
-    // Set Chrome path in production
-    if (process.env.NODE_ENV === 'production') {
-      launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/chromium';
-      // Add additional production-specific arguments
-      launchOptions.args.push(
-        '--disable-extensions',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-default-apps',
-        '--mute-audio'
-      );
-    }
-
-    browser = await puppeteer.launch(launchOptions);
+    browser = await puppeteer.launch(getBrowserConfig());
     
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
     // Set timeouts
-    page.setDefaultNavigationTimeout(60000); // Increased timeout for production
-    page.setDefaultTimeout(60000);
+    page.setDefaultNavigationTimeout(parseInt(process.env.NAVIGATION_TIMEOUT || '60000'));
+    page.setDefaultTimeout(parseInt(process.env.REQUEST_TIMEOUT || '60000'));
 
     // Navigate to login page with retry logic
     let retries = 3;
     while (retries > 0) {
       try {
-        await page.goto('https://samvidha.iare.ac.in/', { 
+        await page.goto(process.env.SAMVIDHA_URL || 'https://samvidha.iare.ac.in/', { 
           waitUntil: 'networkidle2',
-          timeout: 60000
+          timeout: parseInt(process.env.SAMVIDHA_NAVIGATION_TIMEOUT || '60000')
         });
         break;
       } catch (error) {
@@ -160,7 +124,7 @@ async function loginToSamvidha(username, password) {
       try {
         await page.waitForNavigation({ 
           waitUntil: 'networkidle2',
-          timeout: 60000
+          timeout: parseInt(process.env.SAMVIDHA_LOGIN_TIMEOUT || '60000')
         });
         break;
       } catch (error) {
@@ -188,11 +152,6 @@ async function loginToSamvidha(username, password) {
     throw error;
   }
 }
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy' });
-});
 
 app.post('/fetch-attendance', async (req, res) => {
   const { username, password } = req.body;
