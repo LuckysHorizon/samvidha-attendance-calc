@@ -6,13 +6,12 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "build": "npm install --production",
+    "install:prod": "npm ci --only=production",
     "prod": "NODE_ENV=production node backend/server.js",
     "test:prod": "node test-prod.js",
     "postinstall": "mkdir -p logs"
   },
   "dependencies": {
-    "attendance-calculator": "file:",
     "b4a": "^1.6.4",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
@@ -47,7 +46,6 @@
     "node": ">=18.0.0"
   },
   "private": true,
-  "puppeteer_skip_chromium_download": true,
   "config": {
     "puppeteer_skip_chromium_download": true
   }
