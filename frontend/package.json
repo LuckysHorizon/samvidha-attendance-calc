@@ -1,0 +1,17 @@
+{
+  "name": "attendance-calculator-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Attendance Calculator",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/input.css -o ./css/styles.css --minify",
+    "watch:css": "tailwindcss -i ./src/input.css -o ./css/styles.css --watch"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1"
+  },
+  "dependencies": {
+    "attendance-calculator-frontend": "file:"
+  }
+}

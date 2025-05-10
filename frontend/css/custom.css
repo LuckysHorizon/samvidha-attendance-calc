@@ -1,0 +1,209 @@
+/* Smooth scrolling for the entire page */
+html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #000000 0%, #000000 50%, #1e3a8a 75%, #3b82f6 100%);
+    color: #ffffff;
+    min-height: 100vh;
+    margin: 0;
+  }
+  
+  /* Glassmorphism Containers */
+  .glass-container {
+    position: relative;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Fade-in Animation */
+  .fade-in {
+    animation: fadeIn 0.8s ease-out;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  /* Navigation Styling */
+  nav {
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  /* Tab Styling */
+  .tab-button {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+  
+  .tab-active {
+    background: #3b82f6;
+    color: white;
+  }
+  
+  .tab-inactive {
+    background: transparent;
+    color: #d1d5db;
+  }
+  
+  .tab-inactive:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+  }
+  
+  /* Button Styling */
+  .button {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+  
+  .logout-button {
+    background: #ef4444;
+    color: white;
+  }
+  
+  .logout-button:hover {
+    background: #dc2626;
+  }
+  
+  /* Loading Animation */
+  .loader {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.2);
+    border-top: 5px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .loader-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  
+  .loader-text {
+    color: white;
+    font-size: 1rem;
+    margin-top: 1rem;
+    animation: pulse 1.5s infinite;
+  }
+  
+  @keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+  
+  /* Card Styling */
+  .card {
+    transition: transform 0.3s ease;
+  }
+  
+  .card:hover {
+    transform: translateY(-3px);
+  }
+  
+  /* Chart Styling */
+  .chart-container {
+    position: relative;
+    max-width: 300px;
+    margin: 0 auto;
+  }
+  
+  .chart-center-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #3b82f6;
+    text-align: center;
+  }
+  
+  /* Mobile Responsive Adjustments */
+  @media (max-width: 640px) {
+    .container {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+  
+    nav {
+      padding: 1rem;
+    }
+  
+    nav .container {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+  
+    nav .container h1 {
+      font-size: 1.5rem;
+    }
+  
+    nav .container div {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+  
+    .tab-button, .logout-button {
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+    }
+  
+    .grid-cols-1 {
+      grid-template-columns: 1fr;
+    }
+  
+    .lg\:col-span-2 {
+      grid-column: span 1 / span 1;
+    }
+  
+    .md\:grid-cols-2 {
+      grid-template-columns: 1fr;
+    }
+  
+    h2 {
+      font-size: 1.5rem;
+    }
+  
+    h3 {
+      font-size: 1.125rem;
+    }
+  
+    .chart-container {
+      max-width: 200px;
+    }
+  
+    .chart-center-text {
+      font-size: 1.25rem;
+    }
+  }

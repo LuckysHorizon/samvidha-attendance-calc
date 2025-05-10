@@ -67,6 +67,11 @@ app.use(express.json());
 app.use(compression());
 app.use(morgan('combined'));
 
+// Serve static files
+app.use(express.static(path.join(__dirname, '../frontend')));
+app.use('/css', express.static(path.join(__dirname, '../frontend/css')));
+app.use('/js', express.static(path.join(__dirname, '../frontend/js')));
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy' });
@@ -153,7 +158,9 @@ async function loginToSamvidha(username, password) {
   }
 }
 
+// API routes
 app.post('/fetch-attendance', async (req, res) => {
+  console.log('Received /fetch-attendance request', req.body);
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -292,7 +299,7 @@ app.post('/fetch-class-attendance', async (req, res) => {
   }
 });
 
-// Serve index.html for all other routes
+// Serve index.html for all other routes (catch-all, must be last)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
