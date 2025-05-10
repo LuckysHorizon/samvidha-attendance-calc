@@ -30,5 +30,8 @@
     "node": ">=18.0.0"
   },
   "private": true,
-  "puppeteer_skip_chromium_download": true
+  "puppeteer_skip_chromium_download": true,
+  "config": {
+    "puppeteer_skip_chromium_download": true
+  }
 }
