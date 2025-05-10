@@ -38,5 +38,10 @@ coverage
 .DS_Store
 Thumbs.db
 
+# Build
 dist/
-.vercel
+build/
+.cache/
+
+# Render
+.render/
