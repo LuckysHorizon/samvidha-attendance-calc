@@ -6,8 +6,9 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "build": "npm install",
-    "prod": "NODE_ENV=production node backend/server.js"
+    "build": "npm ci --production",
+    "prod": "NODE_ENV=production node backend/server.js",
+    "test:prod": "node test-prod.js"
   },
   "dependencies": {
     "attendance-calculator": "file:",
@@ -25,6 +26,6 @@
     "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   }
 }

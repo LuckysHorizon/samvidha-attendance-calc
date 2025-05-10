@@ -88,17 +88,20 @@ async function loginToSamvidha(username, password) {
         '--disable-accelerated-2d-canvas',
         '--disable-gpu',
         '--window-size=1920x1080',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-site-isolation-trials'
       ],
-      ignoreHTTPSErrors: true,
-      timeout: 30000
+      ignoreHTTPSErrors: true
     };
 
-    // Add executable path for production
+    // Set Chrome path in production
     if (process.env.NODE_ENV === 'production') {
-      launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/google-chrome';
+      launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/chromium';
+      // Add additional production-specific arguments
+      launchOptions.args.push(
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-default-apps',
+        '--mute-audio'
+      );
     }
 
     browser = await puppeteer.launch(launchOptions);
@@ -107,27 +110,57 @@ async function loginToSamvidha(username, password) {
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    // Set timeout for navigation
-    page.setDefaultNavigationTimeout(30000);
-    page.setDefaultTimeout(30000);
+    // Set timeouts
+    page.setDefaultNavigationTimeout(60000); // Increased timeout for production
+    page.setDefaultTimeout(60000);
 
-    // Navigate to login page
-    await page.goto('https://samvidha.iare.ac.in/', { 
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
+    // Navigate to login page with retry logic
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto('https://samvidha.iare.ac.in/', { 
+          waitUntil: 'networkidle2',
+          timeout: 60000
+        });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
+      }
+    }
 
-    // Enter credentials
-    await page.waitForSelector('input[name="txt_uname"]', { timeout: 10000 });
-    await page.type('input[name="txt_uname"]', username);
-    await page.type('input[name="txt_pwd"]', password);
-    await page.click('button#but_submit');
+    // Enter credentials with retry logic
+    retries = 3;
+    while (retries > 0) {
+      try {
+        await page.waitForSelector('input[name="txt_uname"]', { timeout: 30000 });
+        await page.type('input[name="txt_uname"]', username);
+        await page.type('input[name="txt_pwd"]', password);
+        await page.click('button#but_submit');
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
 
-    // Wait for navigation
-    await page.waitForNavigation({ 
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
+    // Wait for navigation with retry logic
+    retries = 3;
+    while (retries > 0) {
+      try {
+        await page.waitForNavigation({ 
+          waitUntil: 'networkidle2',
+          timeout: 60000
+        });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
 
     // Check for login failure
     if (page.url().includes('login')) {
