@@ -5,7 +5,6 @@ services:
     region: oregon  # Specify a region for better performance
     plan: free   # Specify the plan type
     buildCommand: |
-<<<<<<< HEAD
       apt-get update && apt-get install -y \
       chromium \
       chromium-driver \
@@ -18,17 +17,6 @@ services:
       && rm -rf /var/lib/apt/lists/* \
       && npm ci --production
     startCommand: node backend/server.js
-=======
-      # Install Chrome dependencies
-      apt-get update && apt-get install -y wget gnupg2 ca-certificates
-      wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
-      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
-      apt-get update && apt-get install -y google-chrome-stable --no-install-recommends
-      apt-get clean && rm -rf /var/lib/apt/lists/*
-      # Install Node.js dependencies with Puppeteer skip
-      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm ci --production
-    startCommand: npm start
->>>>>>> 6b55f4202ffd5ca4a6ebd5f59c8863b3cb91518c
     envVars:
       - key: NODE_ENV
         value: production
