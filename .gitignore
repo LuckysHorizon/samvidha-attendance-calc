@@ -50,6 +50,16 @@ coverage
 ehthumbs.db
 Thumbs.db
 
+<<<<<<< HEAD
 # Build output
 dist/
 build/
+=======
+# Build
+dist/
+build/
+.cache/
+
+# Render
+.render/
+>>>>>>> 6b55f4202ffd5ca4a6ebd5f59c8863b3cb91518c
