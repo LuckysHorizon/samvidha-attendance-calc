@@ -6,14 +6,9 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-<<<<<<< HEAD
     "build": "npm ci --production",
     "prod": "NODE_ENV=production node backend/server.js",
     "test:prod": "node test-prod.js"
-=======
-    "build": "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm ci --production",
-    "prod": "NODE_ENV=production node backend/server.js"
->>>>>>> 6b55f4202ffd5ca4a6ebd5f59c8863b3cb91518c
   },
   "dependencies": {
     "attendance-calculator": "file:",
