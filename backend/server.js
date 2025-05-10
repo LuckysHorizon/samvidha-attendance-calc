@@ -89,7 +89,6 @@ async function loginToSamvidha(username, password) {
         '--disable-gpu',
         '--window-size=1920x1080',
       ],
-<<<<<<< HEAD
       ignoreHTTPSErrors: true
     };
 
@@ -105,12 +104,6 @@ async function loginToSamvidha(username, password) {
       );
     }
 
-=======
-      ignoreHTTPSErrors: true,
-      executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome'
-    };
-
->>>>>>> 6b55f4202ffd5ca4a6ebd5f59c8863b3cb91518c
     browser = await puppeteer.launch(launchOptions);
     
     const page = await browser.newPage();
