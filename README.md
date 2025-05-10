@@ -1,62 +1,106 @@
-Attendance Calculator for Samvidha Portal
+# Attendance Calculator for Samvidha Portal
+
 A web application to calculate attendance percentage and days needed to maintain 75% attendance by scraping data from the Samvidha portal (https://samvidha.iare.ac.in/).
-File Structure
-attendance-calculator/
-├── backend/
-│   ├── node_modules/
-│   ├── package.json
-│   ├── server.js
-│   └── .env
-├── frontend/
-│   └── index.html
-├── .gitignore
-└── README.md
 
-Prerequisites
+## Features
 
-Node.js and npm
-VS Code
-Google Chrome (for Puppeteer)
+- Automated attendance calculation
+- Detailed attendance statistics
+- Days needed to maintain 75% attendance
+- Class-wise attendance breakdown
+- Secure credential handling
+- Responsive design
 
-Setup Instructions
+## Tech Stack
 
-Clone the repository:
+- **Backend:**
+  - Node.js
+  - Express.js
+  - Puppeteer (for web scraping)
+  - Winston (for logging)
+  - Helmet (for security)
+
+- **Frontend:**
+  - HTML5
+  - Tailwind CSS
+  - JavaScript (Vanilla)
+
+## Prerequisites
+
+- Node.js (v14 or higher)
+- npm (v6 or higher)
+- Google Chrome (for Puppeteer)
+
+## Local Development Setup
+
+1. Clone the repository:
+```bash
 git clone <repository-url>
 cd attendance-calculator
+```
 
-
-Set up backend:
-cd backend
+2. Install dependencies:
+```bash
 npm install
+```
 
-Create a .env file with:
+3. Create a `.env` file in the backend directory with:
+```env
+NODE_ENV=development
 PORT=3000
+CHROME_BIN=/usr/bin/google-chrome
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+CORS_ORIGIN=http://localhost:3000
+```
 
+4. Start the development server:
+```bash
+npm run dev
+```
 
-Run backend:
-npm start
+5. Access the application at `http://localhost:3000`
 
+## Production Deployment
 
-Serve frontend:
+The application is configured for deployment on Render. Follow these steps:
 
-Open frontend/index.html in VS Code.
-Use the Live Server extension (right-click index.html > Open with Live Server) or serve via:npx serve frontend
+1. Fork this repository
+2. Create a new Web Service on Render
+3. Connect your repository
+4. Set the following environment variables in Render:
+   - `NODE_ENV=production`
+   - `PORT=10000`
+   - `CHROME_BIN=/usr/bin/google-chrome`
+   - `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true`
+   - `PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome`
+   - `CORS_ORIGIN=https://your-app-name.onrender.com`
 
+## Security Considerations
 
+- Credentials are never stored on the server
+- All requests are rate-limited
+- CORS is properly configured
+- Security headers are implemented
+- HTTPS is enforced in production
 
+## Contributing
 
-Access the application:
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-Open http://localhost:5500 (or the Live Server port) in a browser.
-Enter Samvidha credentials to view attendance details.
+## License
 
+This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Acknowledgments
 
-Notes
-
-Update selectors in server.js based on the Samvidha portal's HTML structure.
-Ensure compliance with the portal's terms of service for web scraping.
-Deploy to Heroku/Vercel for production use.
+- Samvidha Portal for the data source
+- Puppeteer team for the web scraping capabilities
+- Render for hosting
 
 Dependencies
 
