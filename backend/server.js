@@ -88,18 +88,10 @@ async function loginToSamvidha(username, password) {
         '--disable-accelerated-2d-canvas',
         '--disable-gpu',
         '--window-size=1920x1080',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-site-isolation-trials'
       ],
       ignoreHTTPSErrors: true,
-      timeout: 30000
+      executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome'
     };
-
-    // Add executable path for production
-    if (process.env.NODE_ENV === 'production') {
-      launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/google-chrome';
-    }
 
     browser = await puppeteer.launch(launchOptions);
     
