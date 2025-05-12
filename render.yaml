@@ -3,6 +3,7 @@ services:
     name: attendance-calculator
     runtime: docker
     dockerfilePath: Dockerfile
+    buildCommand: echo Build handled by Dockerfile
     plan: free
     healthCheckPath: /health
     envVars:
