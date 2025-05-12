@@ -215,7 +215,7 @@ app.post('/fetch-attendance', async (req, res) => {
       waitUntil: 'domcontentloaded', 
       timeout: 30000 
     });
-    await page.waitForSelector('table tbody tr', { timeout: 10000 });
+    await page.waitForSelector('table tbody tr', { timeout: 20000 });
     logger.info(`Biometric page load: ${Date.now() - navStart}ms`);
 
     const scrapeStart = Date.now();
