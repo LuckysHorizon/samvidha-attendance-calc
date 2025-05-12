@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install dependencies
+# Install dependencies required for Chrome & Puppeteer
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg2 \
@@ -33,32 +33,35 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
     apt-get update && apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
 
+# Set environment variables
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome \
     CHROME_BIN=/usr/bin/google-chrome \
     NODE_ENV=production
 
+# Set work directory
 WORKDIR /app
 
-# Copy backend and frontend separately
-COPY backend ./backend
-COPY frontend ./frontend
-COPY backend/package.json ./backend/package.json
-COPY backend/package-lock.json ./backend/package-lock.json
+# Copy only package files first to leverage Docker cache
+COPY backend/package.json backend/package-lock.json ./backend/
 
 # Install backend dependencies
 WORKDIR /app/backend
 RUN npm ci --only=production
 
-# Build frontend CSS
-WORKDIR /app/frontend
-RUN npm ci
-RUN npm run build:css
+# Now copy the rest of the source code
+WORKDIR /app
+COPY backend ./backend
+COPY frontend ./frontend
 
-# Copy built CSS to backend static folder
+# Build frontend
+WORKDIR /app/frontend
+RUN npm ci && npm run build:css
+
+# Copy built frontend assets to backend (if needed)
 RUN cp ./css/styles.css ../backend/css/styles.css
 
-# Set working directory to backend for running the app
+# Final working dir and command
 WORKDIR /app/backend
-
+EXPOSE 3000
 CMD ["npm", "start"]
