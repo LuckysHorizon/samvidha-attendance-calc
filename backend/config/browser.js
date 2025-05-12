@@ -1,10 +1,11 @@
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
 const findChromePath = () => {
-  // Prioritize environment variables
+  // First check environment variables
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
@@ -12,12 +13,7 @@ const findChromePath = () => {
     return process.env.CHROME_BIN;
   }
 
-  // Default to chromium in production (Render/Docker)
-  if (isProduction) {
-    return '/usr/bin/chromium';
-  }
-
-  // Common Chrome paths for development
+  // Common Chrome paths for different platforms
   const paths = {
     win32: [
       'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -29,15 +25,17 @@ const findChromePath = () => {
       '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'
     ],
     linux: [
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser',
       '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable'
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser'
     ]
   };
 
+  // Check platform-specific paths
   const platformPaths = paths[os.platform()] || paths.linux;
   
+  // Find the first existing Chrome executable
   for (const chromePath of platformPaths) {
     try {
       if (fs.existsSync(chromePath)) {
@@ -48,6 +46,7 @@ const findChromePath = () => {
     }
   }
 
+  // If no Chrome found, return the default path for the platform
   return platformPaths[0];
 };
 
@@ -60,18 +59,20 @@ const getBrowserConfig = () => {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
       '--disable-gpu',
+      '--window-size=1920x1080',
+      '--disable-extensions',
+      '--disable-component-extensions-with-background-pages',
+      '--disable-default-apps',
+      '--mute-audio',
+      '--no-first-run',
       '--no-zygote',
       '--single-process',
-      '--disable-background-networking',
-      '--disable-sync',
-      '--disable-translate',
-      '--disable-extensions',
-      '--mute-audio',
-      '--no-first-run'
+      '--disable-features=site-per-process'
     ],
     headless: 'new',
-    timeout: 20000, // Reduced for faster failure
+    timeout: parseInt(process.env.BROWSER_TIMEOUT || '60000'),
     ignoreHTTPSErrors: true
   };
 };
@@ -79,4 +80,4 @@ const getBrowserConfig = () => {
 module.exports = {
   getBrowserConfig,
   findChromePath
-};
+}; 

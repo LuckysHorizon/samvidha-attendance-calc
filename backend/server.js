@@ -7,14 +7,10 @@ const morgan = require('morgan');
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
-const NodeCache = require('node-cache');
 const { getBrowserConfig } = require('./config/browser');
 require('dotenv').config();
 
-// Initialize cache with 15-minute TTL
-const cache = new NodeCache({ stdTTL: 15 * 60, checkperiod: 300 });
-
-// Configure logger
+// Configure logger with more detailed format
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: winston.format.combine(
@@ -38,13 +34,14 @@ const logger = winston.createLogger({
   ]
 });
 
+// Add console transport in development
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
     format: winston.format.simple()
   }));
 }
 
-// Create logs directory
+// Create logs directory if it doesn't exist
 const logDir = process.env.LOG_FILE_PATH || './logs';
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
@@ -53,7 +50,7 @@ if (!fs.existsSync(logDir)) {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Security middleware
+// Security middleware with production-specific settings
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
@@ -80,107 +77,82 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy' });
 });
 
-// Shared browser instance
-let sharedBrowser = null;
-let requestCount = 0;
-
-async function getSharedBrowser() {
-  if (!sharedBrowser || requestCount >= 100) {
-    if (sharedBrowser) await sharedBrowser.close();
-    sharedBrowser = await puppeteer.launch(getBrowserConfig());
-    logger.info('Shared browser initialized/restarted');
-    requestCount = 0;
-  }
-  requestCount++;
-  return sharedBrowser;
-}
-
-// Helper function to login
+// Helper function to login and get browser session with improved error handling
 async function loginToSamvidha(username, password) {
-  let page;
+  let browser;
   try {
-    const start = Date.now();
-    const browser = await getSharedBrowser();
-    page = await browser.newPage();
-    logger.info(`Page creation: ${Date.now() - start}ms`);
+    browser = await puppeteer.launch(getBrowserConfig());
+    
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    await page.setViewport({ width: 1280, height: 720 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    // Set timeouts
+    page.setDefaultNavigationTimeout(parseInt(process.env.NAVIGATION_TIMEOUT || '60000'));
+    page.setDefaultTimeout(parseInt(process.env.REQUEST_TIMEOUT || '60000'));
 
-    // Block unnecessary resources
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      const resourceType = request.resourceType();
-      if (['image', 'stylesheet', 'font', 'media', 'script'].includes(resourceType)) {
-        request.abort();
-      } else {
-        request.continue();
-      }
-    });
-
-    page.setDefaultNavigationTimeout(30000);
-    page.setDefaultTimeout(30000);
-
+    // Navigate to login page with retry logic
     let retries = 3;
-    const navStart = Date.now();
     while (retries > 0) {
       try {
         await page.goto(process.env.SAMVIDHA_URL || 'https://samvidha.iare.ac.in/', { 
-          waitUntil: 'domcontentloaded', 
-          timeout: 30000 
+          waitUntil: 'networkidle2',
+          timeout: parseInt(process.env.SAMVIDHA_NAVIGATION_TIMEOUT || '60000')
         });
         break;
       } catch (error) {
         retries--;
         if (retries === 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
       }
     }
-    logger.info(`Navigation: ${Date.now() - navStart}ms`);
 
+    // Enter credentials with retry logic
     retries = 3;
-    const loginStart = Date.now();
     while (retries > 0) {
       try {
-        await page.waitForSelector('input[name="txt_uname"]', { timeout: 10000 });
-        await page.type('input[name="txt_uname"]', username, { delay: 50 });
-        await page.type('input[name="txt_pwd"]', password, { delay: 50 });
+        await page.waitForSelector('input[name="txt_uname"]', { timeout: 30000 });
+        await page.type('input[name="txt_uname"]', username);
+        await page.type('input[name="txt_pwd"]', password);
         await page.click('button#but_submit');
         break;
       } catch (error) {
         retries--;
         if (retries === 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
+    // Wait for navigation with retry logic
     retries = 3;
     while (retries > 0) {
       try {
         await page.waitForNavigation({ 
-          waitUntil: 'domcontentloaded', 
-          timeout: 30000 
+          waitUntil: 'networkidle2',
+          timeout: parseInt(process.env.SAMVIDHA_LOGIN_TIMEOUT || '60000')
         });
         break;
       } catch (error) {
         retries--;
         if (retries === 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
-    logger.info(`Login: ${Date.now() - loginStart}ms`);
 
+    // Check for login failure
     if (page.url().includes('login')) {
       throw new Error('Invalid credentials');
     }
 
     return { browser, page };
   } catch (error) {
-    if (page) await page.close();
+    if (browser) {
+      await browser.close();
+    }
     logger.error('Login error:', {
       error: error.message,
       stack: error.stack,
-      username
+      username: username
     });
     throw error;
   }
@@ -188,37 +160,22 @@ async function loginToSamvidha(username, password) {
 
 // API routes
 app.post('/fetch-attendance', async (req, res) => {
-  logger.info('Received /fetch-attendance request', { body: req.body });
+  console.log('Received /fetch-attendance request', req.body);
   const { username, password } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  const cacheKey = `attendance:${username}`;
-  const cachedData = cache.get(cacheKey);
-  if (cachedData) {
-    logger.info('Serving /fetch-attendance from cache', { username });
-    return res.json(cachedData);
-  }
-
   let browser;
-  let page;
   try {
-    const start = Date.now();
-    const { browser: b, page: p } = await loginToSamvidha(username, password);
+    const { browser: b, page } = await loginToSamvidha(username, password);
     browser = b;
-    page = p;
 
-    const navStart = Date.now();
-    await page.goto('https://samvidha.iare.ac.in/home?action=std_bio', { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 30000 
-    });
-    await page.waitForSelector('table tbody tr', { timeout: 20000 });
-    logger.info(`Biometric page load: ${Date.now() - navStart}ms`);
+    // Navigate to biometric page
+    await page.goto('https://samvidha.iare.ac.in/home?action=std_bio', { waitUntil: 'networkidle2' });
 
-    const scrapeStart = Date.now();
+    // Scrape detailed attendance data
     const attendanceData = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('table tbody tr'));
       const attendanceDetails = rows.map(row => ({
@@ -235,12 +192,15 @@ app.post('/fetch-attendance', async (req, res) => {
 
       return {
         details: attendanceDetails,
-        summary: { totalDays, presentDays, absentDays }
+        summary: {
+          totalDays,
+          presentDays,
+          absentDays
+        }
       };
     });
-    logger.info(`Scraping: ${Date.now() - scrapeStart}ms`);
 
-    const calcStart = Date.now();
+    // Calculate attendance metrics
     const attendancePercentage = attendanceData.summary.totalDays > 0 
       ? ((attendanceData.summary.presentDays / attendanceData.summary.totalDays) * 100).toFixed(2) 
       : 0;
@@ -250,60 +210,46 @@ app.post('/fetch-attendance', async (req, res) => {
       const requiredPresent = Math.ceil(0.75 * attendanceData.summary.totalDays);
       daysNeeded = requiredPresent - attendanceData.summary.presentDays;
     }
-    logger.info(`Calculation: ${Date.now() - calcStart}ms`);
 
-    const responseData = {
+    res.json({
       totalClasses: attendanceData.summary.totalDays,
       present: attendanceData.summary.presentDays,
       absent: attendanceData.summary.absentDays,
       attendancePercentage,
       daysNeeded,
       details: attendanceData.details
-    };
-
-    cache.set(cacheKey, responseData);
-    logger.info(`Total fetch-attendance time: ${Date.now() - start}ms`);
-    res.json(responseData);
+    });
   } catch (error) {
-    logger.error('Error in fetch-attendance:', { error: error.message, stack: error.stack });
+    console.error('Error in fetch-attendance:', error.message);
     res.status(500).json({ error: 'Failed to fetch attendance data: ' + error.message });
   } finally {
-    if (page) await page.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 });
 
 app.post('/fetch-class-attendance', async (req, res) => {
-  logger.info('Received /fetch-class-attendance request', { body: req.body });
   const { username, password } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  const cacheKey = `class-attendance:${username}`;
-  const cachedData = cache.get(cacheKey);
-  if (cachedData) {
-    logger.info('Serving /fetch-class-attendance from cache', { username });
-    return res.json(cachedData);
-  }
-
   let browser;
-  let page;
   try {
-    const start = Date.now();
-    const { browser: b, page: p } = await loginToSamvidha(username, password);
+    const { browser: b, page } = await loginToSamvidha(username, password);
     browser = b;
-    page = p;
 
-    const navStart = Date.now();
-    await page.goto('https://samvidha.iare.ac.in/home?action=course_content', { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 30000 
-    });
-    await page.waitForSelector('table.table', { timeout: 10000 });
-    logger.info(`Course content page load: ${Date.now() - navStart}ms`);
-
-    const scrapeStart = Date.now();
+    // Navigate to course content page
+    await page.goto('https://samvidha.iare.ac.in/home?action=course_content', { waitUntil: 'networkidle2' });
+    // Wait for the table or fallback to a longer wait
+    try {
+      await page.waitForSelector('table.table', { timeout: 10000 });
+    } catch (e) {
+      await page.waitForTimeout(3000); // fallback wait
+    }
+    // Scrape attendance data from the table
     const attendanceRows = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('table.table tbody tr'));
       return rows.map(row => {
@@ -316,9 +262,8 @@ app.post('/fetch-class-attendance', async (req, res) => {
         };
       });
     });
-    logger.info(`Scraping: ${Date.now() - scrapeStart}ms`);
 
-    const calcStart = Date.now();
+    // Aggregate attendance by topic
     const topicMap = {};
     attendanceRows.forEach(row => {
       const topic = row.topic || 'Unknown';
@@ -342,26 +287,24 @@ app.post('/fetch-class-attendance', async (req, res) => {
     if (classAttendanceData.length === 0) {
       throw new Error('No attendance data found. Please check if you have access to the course content page.');
     }
-    logger.info(`Calculation: ${Date.now() - calcStart}ms`);
 
-    const responseData = { classAttendanceData };
-    cache.set(cacheKey, responseData);
-    logger.info(`Total fetch-class-attendance time: ${Date.now() - start}ms`);
-    res.json(responseData);
+    res.json({ classAttendanceData });
   } catch (error) {
-    logger.error('Error in fetch-class-attendance:', { error: error.message, stack: error.stack });
+    console.error('Error in fetch-class-attendance:', error.message);
     res.status(500).json({ error: 'Failed to fetch class attendance data: ' + error.message });
   } finally {
-    if (page) await page.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 });
 
-// Serve index.html for all other routes
+// Serve index.html for all other routes (catch-all, must be last)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Error handling middleware
+// Update error handling middleware with better logging
 app.use((err, req, res, next) => {
   const errorDetails = {
     error: err.message,
@@ -374,14 +317,15 @@ app.use((err, req, res, next) => {
   
   logger.error('Unhandled error:', errorDetails);
   
+  // Send appropriate error response
   res.status(err.status || 500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : err.message,
-    requestId: req.id
+    requestId: req.id // Add request ID for tracking
   });
 });
 
-// Start server
+// Start server with error handling
 const server = app.listen(port, () => {
   logger.info(`Server is running on port ${port} in ${process.env.NODE_ENV} mode`);
 }).on('error', (error) => {
@@ -389,18 +333,13 @@ const server = app.listen(port, () => {
   process.exit(1);
 });
 
-// Graceful shutdown
+// Update graceful shutdown with better logging
 const gracefulShutdown = async () => {
   logger.info('Received shutdown signal', {
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
-
-  if (sharedBrowser) {
-    await sharedBrowser.close();
-    logger.info('Shared browser closed');
-  }
-
+  
   server.close(() => {
     logger.info('HTTP server closed', {
       timestamp: new Date().toISOString()
@@ -408,6 +347,7 @@ const gracefulShutdown = async () => {
     process.exit(0);
   });
 
+  // Force shutdown after 10 seconds
   setTimeout(() => {
     logger.error('Could not close connections in time, forcefully shutting down', {
       timestamp: new Date().toISOString()
@@ -419,6 +359,7 @@ const gracefulShutdown = async () => {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
+// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', {
     error: error.message,
@@ -427,6 +368,7 @@ process.on('uncaughtException', (error) => {
   gracefulShutdown();
 });
 
+// Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection:', {
     reason: reason,
