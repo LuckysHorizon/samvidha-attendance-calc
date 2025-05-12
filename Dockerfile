@@ -43,8 +43,8 @@ WORKDIR /app
 # Copy backend and frontend separately
 COPY backend ./backend
 COPY frontend ./frontend
-COPY package.json ./package.json
-COPY package-lock.json ./package-lock.json
+COPY backend/package.json ./backend/package.json
+COPY backend/package-lock.json ./backend/package-lock.json
 
 # Install backend dependencies
 WORKDIR /app/backend
