@@ -4,8 +4,8 @@
   "description": "Attendance Calculator Web Application",
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "nodemon backend/server.js",
+    "start": "node server.js",
+    "dev": "nodemon server.js",
     "install:prod": "npm ci --only=production",
     "prod": "NODE_ENV=production node backend/server.js",
     "test:prod": "node test-prod.js",
