@@ -39,8 +39,26 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     NODE_ENV=production
 
 WORKDIR /app
-COPY . .
 
+# Copy backend and frontend separately
+COPY backend ./backend
+COPY frontend ./frontend
+COPY package.json ./package.json
+COPY package-lock.json ./package-lock.json
+
+# Install backend dependencies
+WORKDIR /app/backend
 RUN npm ci --only=production
 
-CMD ["npm", "start"] 
+# Build frontend CSS
+WORKDIR /app/frontend
+RUN npm ci
+RUN npm run build:css
+
+# Copy built CSS to backend static folder
+RUN cp ./css/styles.css ../backend/css/styles.css
+
+# Set working directory to backend for running the app
+WORKDIR /app/backend
+
+CMD ["npm", "start"]
