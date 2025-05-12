@@ -1,55 +1,53 @@
+# Use a lightweight Node.js base image
 FROM node:18-slim
 
-# Install Puppeteer dependencies and Chrome
+# Install Chromium and essential dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg2 \
-    ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libatspi2.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnspr4 \
+    chromium \
     libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
     libxcomposite1 \
     libxdamage1 \
-    libxfixes3 \
     libxrandr2 \
-    xdg-utils \
-    libu2f-udev \
-    libvulkan1 \
+    libgbm1 \
+    libasound2 \
+    fonts-liberation \
+    ca-certificates \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list && \
-    apt-get update && apt-get install -y google-chrome-stable && \
-    rm -rf /var/lib/apt/lists/*
+# Set environment variables for Puppeteer and production
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    NODE_ENV=production \
+    PORT=10000
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome \
-    CHROME_BIN=/usr/bin/google-chrome \
-    NODE_ENV=production
-
+# Set working directory
 WORKDIR /app
 
-# Copy everything
-COPY . .
+# Copy package.json and package-lock.json
+COPY package*.json ./
 
-# Install backend dependencies
-RUN npm ci --only=production
+# Install production dependencies with fallback
+RUN npm ci --only=production || npm install --production
+
+# Copy application code
+COPY . .
 
 # Optional: build frontend if needed
 # WORKDIR /app/frontend
 # RUN npm ci && npm run build:css
 # RUN cp ./css/styles.css ../backend/css/styles.css
 
-# Run backend
+# Set backend working directory
 WORKDIR /app/backend
+
+# Expose port for Render
+EXPOSE 10000
+
+# Start the application
 CMD ["npm", "start"]
