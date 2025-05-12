@@ -33,7 +33,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies with fallback
-RUN npm ci --only=production || npm install --production
+RUN npm ci --omit=dev || npm install --omit=dev
 
 # Copy application code
 COPY . .
