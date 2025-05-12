@@ -4,6 +4,7 @@ services:
     runtime: docker
     dockerfilePath: Dockerfile
     buildCommand: "true"
+    startCommand: "npm start"
     plan: free
     healthCheckPath: /health
     envVars:
