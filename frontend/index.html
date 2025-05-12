@@ -25,12 +25,7 @@
     <p id="error" class="text-red-400 mt-4 hidden text-center"></p>
   </div>
 
-  <!-- Loading Animation -->
-  <div id="loader" class="loader-overlay hidden">
-    <div class="loader"></div>
-    <p class="loader-text">Fetching your attendance...</p>
-  </div>
-
+  
   <script>
     // Determine the API URL based on the environment
     const API_URL = window.location.hostname === 'localhost' 
@@ -46,7 +41,7 @@
       const loader = document.getElementById('loader');
 
       errorP.classList.add('hidden');
-      loader.classList.remove('hidden');
+      
 
       try {
         const response = await fetch('/fetch-attendance', {
@@ -73,7 +68,7 @@
         window.location.href = 'dashboard.html';
       } catch (error) {
         console.error('Error:', error);
-        loader.classList.add('hidden');
+        
         errorP.textContent = error.message || 'An error occurred while fetching data. Please try again.';
         errorP.classList.remove('hidden');
       }
