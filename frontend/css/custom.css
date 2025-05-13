@@ -204,6 +204,14 @@ html {
     }
   
     .chart-center-text {
-      font-size: 1.25rem;
+      font-size: 1.1rem;
+      max-width: 120px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      white-space: normal;
+      word-break: break-word;
+      padding: 0 2px;
+      line-height: 1.2;
     }
   }

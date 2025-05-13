@@ -7,8 +7,87 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/custom.css">
+  <style>
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+    }
+
+    .loading-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .loading-content {
+      text-align: center;
+      color: white;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #3b82f6;
+      animation: spin 1s ease-in-out infinite;
+      margin: 0 auto 1rem;
+    }
+
+    .loading-text {
+      font-size: 1.1rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    .loading-subtext {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+      }
+
+      .loading-text {
+        font-size: 1rem;
+      }
+
+      .loading-subtext {
+        font-size: 0.8rem;
+      }
+    }
+  </style>
 </head>
 <body class="flex items-center justify-center min-h-screen">
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Fetching Attendance Data</div>
+      <div class="loading-subtext">Please wait while we retrieve your attendance information...</div>
+    </div>
+  </div>
+
   <div class="glass-container p-8 sm:p-10 rounded-2xl w-full max-w-md fade-in mx-2 sm:mx-auto">
     <h1 class="text-3xl sm:text-4xl font-bold mb-8 text-center text-white">Samvidha Attendance</h1>
     <form id="attendanceForm" class="space-y-6">
@@ -25,12 +104,20 @@
     <p id="error" class="text-red-400 mt-4 hidden text-center"></p>
   </div>
 
-  
   <script>
     // Determine the API URL based on the environment
     const API_URL = window.location.hostname === 'localhost' 
       ? 'http://localhost:3000'
       : window.location.origin;
+
+    // Loading overlay functions
+    function showLoading() {
+      document.getElementById('loadingOverlay').classList.add('active');
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.remove('active');
+    }
 
     document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -38,10 +125,9 @@
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
       const errorP = document.getElementById('error');
-      const loader = document.getElementById('loader');
 
       errorP.classList.add('hidden');
-      
+      showLoading();
 
       try {
         const response = await fetch('/fetch-attendance', {
@@ -68,7 +154,7 @@
         window.location.href = 'dashboard.html';
       } catch (error) {
         console.error('Error:', error);
-        
+        hideLoading();
         errorP.textContent = error.message || 'An error occurred while fetching data. Please try again.';
         errorP.classList.remove('hidden');
       }

@@ -339,14 +339,12 @@ const gracefulShutdown = async () => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
-  
   server.close(() => {
     logger.info('HTTP server closed', {
       timestamp: new Date().toISOString()
     });
     process.exit(0);
   });
-
   // Force shutdown after 10 seconds
   setTimeout(() => {
     logger.error('Could not close connections in time, forcefully shutting down', {
