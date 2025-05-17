@@ -49,118 +49,182 @@ const configureNewPage = async (page) => {
   return page;
 };
 
-const factory = {
-  create: async () => {
-    try {
-      const browser = await puppeteer.launch({
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions',
-          '--disable-accelerated-2d-canvas',
-          '--disable-ipc-flooding-protection',
-          '--disable-background-networking',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-translate',
-          '--hide-scrollbars',
-          '--metrics-recording-only',
-          '--mute-audio',
-          '--safebrowsing-disable-auto-update',
-          '--ignore-certificate-errors',
-          '--ignore-certificate-errors-spki-list',
-          '--ignore-ssl-errors',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--disable-web-security',
-          '--disable-features=site-per-process',
-          '--window-size=1920,1080',
-          `--js-flags=--max-old-space-size=${Math.floor(os.freemem() / (1024 * 1024))}`,
-        ],
-        headless: 'new',
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
-        defaultViewport: { width: 1920, height: 1080 },
-        protocolTimeout: 30000,
-        timeout: 30000,
-        waitForInitialPage: true,
-      });
+class BrowserPool {
+  constructor() {
+    this.activeConnections = new Map(); // Changed to Map to store creation timestamps
+    this.initializePool();
+  }
 
-      // Configure initial page
-      const pages = await browser.pages();
-      const page = pages[0] || await browser.newPage();
-      await configureNewPage(page);
+  initializePool() {
+    const factory = {
+      create: async () => {
+        try {
+          const browser = await puppeteer.launch({
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--no-first-run',
+              '--no-zygote',
+              '--single-process',
+              '--disable-extensions',
+              '--disable-accelerated-2d-canvas',
+              '--disable-ipc-flooding-protection',
+              '--disable-background-networking',
+              '--disable-default-apps',
+              '--disable-sync',
+              '--disable-translate',
+              '--hide-scrollbars',
+              '--metrics-recording-only',
+              '--mute-audio',
+              '--safebrowsing-disable-auto-update',
+              '--ignore-certificate-errors',
+              '--ignore-certificate-errors-spki-list',
+              '--ignore-ssl-errors',
+              '--disable-features=IsolateOrigins,site-per-process',
+              '--disable-web-security',
+              '--disable-features=site-per-process',
+              '--window-size=1920,1080',
+              `--js-flags=--max-old-space-size=${Math.floor(os.freemem() / (1024 * 1024))}`,
+            ],
+            headless: 'new',
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
+            defaultViewport: { width: 1920, height: 1080 },
+            protocolTimeout: 30000,
+            timeout: 30000,
+            waitForInitialPage: true,
+          });
 
-      // Monitor browser health
-      browser.on('disconnected', () => {
-        console.error('Browser disconnected unexpectedly');
-        pool.destroy(browser).catch(console.error);
-      });
+          const pages = await browser.pages();
+          const page = pages[0] || await browser.newPage();
+          await configureNewPage(page);
 
-      return browser;
-    } catch (error) {
-      console.error('Error creating browser instance:', error);
-      throw error;
-    }
-  },
-  destroy: async (browser) => {
-    try {
-      const pages = await browser.pages();
-      await Promise.all(pages.map(page => page.close().catch(console.error)));
-      await browser.close();
-    } catch (error) {
-      console.error('Error closing browser:', error);
-      // Force close if normal close fails
-      try {
-        browser.process().kill('SIGKILL');
-      } catch (e) {
-        console.error('Error force closing browser:', e);
+          // Store creation time and setup disconnection handler
+          this.activeConnections.set(browser, {
+            createdAt: Date.now(),
+            isDisconnected: false
+          });
+
+          browser.on('disconnected', () => {
+            this.handleDisconnection(browser);
+          });
+
+          return browser;
+        } catch (error) {
+          console.error('Error creating browser instance:', error);
+          throw error;
+        }
+      },
+      destroy: async (browser) => {
+        try {
+          if (!browser.isConnected()) {
+            console.log('Browser already disconnected, skipping normal cleanup');
+            this.activeConnections.delete(browser);
+            return;
+          }
+
+          const pages = await browser.pages();
+          await Promise.all(pages.map(page => page.close().catch(console.error)));
+          await browser.close();
+          this.activeConnections.delete(browser);
+        } catch (error) {
+          console.error('Error during browser cleanup:', error);
+          try {
+            // Force cleanup if normal cleanup fails
+            if (browser.process() != null) {
+              browser.process().kill('SIGKILL');
+            }
+          } catch (e) {
+            console.error('Error during force cleanup:', e);
+          } finally {
+            this.activeConnections.delete(browser);
+          }
+        }
+      },
+      validate: async (browser) => {
+        try {
+          return browser.isConnected() && !this.activeConnections.get(browser)?.isDisconnected;
+        } catch (error) {
+          return false;
+        }
       }
-    }
-  },
-  validate: async (browser) => {
+    };
+
+    this.pool = genericPool.createPool(factory, {
+      max: POOL_MAX,
+      min: POOL_MIN,
+      testOnBorrow: true,
+      acquireTimeoutMillis: 60000,
+      idleTimeoutMillis: 30000,
+      evictionRunIntervalMillis: 15000,
+      numTestsPerEvictionRun: 3,
+      autostart: true,
+      fifo: false,
+      priorityRange: 1,
+      maxWaitingClients: 10,
+      validateOnBorrow: true,
+    });
+
+    // Setup periodic health check
+    this.startHealthCheck();
+  }
+
+  async handleDisconnection(browser) {
     try {
-      // Check if browser is still connected
-      return browser.isConnected();
+      const browserInfo = this.activeConnections.get(browser);
+      if (browserInfo) {
+        browserInfo.isDisconnected = true;
+        
+        // Only attempt to destroy if the browser was created recently
+        const age = Date.now() - browserInfo.createdAt;
+        if (age < 300000) { // 5 minutes
+          console.log('Recent browser disconnected, attempting cleanup');
+          await this.pool.destroy(browser).catch(() => {
+            console.log('Expected: Resource not in pool (already cleaned up)');
+          });
+        } else {
+          console.log('Old browser disconnected, skipping pool cleanup');
+          this.activeConnections.delete(browser);
+        }
+      }
     } catch (error) {
-      return false;
+      console.error('Error handling browser disconnection:', error);
+      this.activeConnections.delete(browser);
     }
   }
-};
 
-const pool = genericPool.createPool(factory, {
-  max: POOL_MAX,
-  min: POOL_MIN,
-  testOnBorrow: true,
-  acquireTimeoutMillis: 60000,
-  idleTimeoutMillis: 30000,
-  evictionRunIntervalMillis: 15000,
-  numTestsPerEvictionRun: 3,
-  autostart: true,
-  fifo: false, // Use LIFO for better performance
-  priorityRange: 1,
-  maxWaitingClients: 10,
-  validateOnBorrow: true,
-});
-
-class BrowserPool {
-  constructor(pool) {
-    this.pool = pool;
-    this.activeConnections = new Set();
+  startHealthCheck() {
+    setInterval(async () => {
+      try {
+        for (const [browser, info] of this.activeConnections) {
+          if (!browser.isConnected() || info.isDisconnected) {
+            await this.handleDisconnection(browser);
+          }
+        }
+      } catch (error) {
+        console.error('Error during health check:', error);
+      }
+    }, 30000); // Check every 30 seconds
   }
 
   async getBrowser() {
     const browser = await this.pool.acquire();
-    this.activeConnections.add(browser);
     return browser;
   }
 
   async releaseBrowser(browser) {
-    this.activeConnections.delete(browser);
-    return await this.pool.release(browser);
+    try {
+      if (!browser.isConnected()) {
+        console.log('Browser disconnected, handling as disconnection instead of release');
+        await this.handleDisconnection(browser);
+        return;
+      }
+      await this.pool.release(browser);
+    } catch (error) {
+      console.error('Error releasing browser:', error);
+      await this.handleDisconnection(browser);
+    }
   }
 
   async drain() {
@@ -183,7 +247,7 @@ class BrowserPool {
   }
 }
 
-const browserPool = new BrowserPool(pool);
+const browserPool = new BrowserPool();
 
 // Graceful shutdown handlers
 const cleanup = async (signal) => {
