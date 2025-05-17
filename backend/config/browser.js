@@ -1,83 +1,74 @@
-const os = require('os');
-const fs = require('fs');
-const path = require('path');
+const puppeteer = require('puppeteer');
+const genericPool = require('generic-pool');
 
-const isProduction = process.env.NODE_ENV === 'production';
+const POOL_MAX = process.env.BROWSER_POOL_MAX || 2;
+const POOL_MIN = process.env.BROWSER_POOL_MIN || 1;
 
-const findChromePath = () => {
-  // First check environment variables
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-  if (process.env.CHROME_BIN) {
-    return process.env.CHROME_BIN;
-  }
-
-  // Common Chrome paths for different platforms
-  const paths = {
-    win32: [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
-    ],
-    darwin: [
-      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'
-    ],
-    linux: [
-      '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser'
-    ]
-  };
-
-  // Check platform-specific paths
-  const platformPaths = paths[os.platform()] || paths.linux;
-  
-  // Find the first existing Chrome executable
-  for (const chromePath of platformPaths) {
+const factory = {
+  create: async () => {
+    const browser = await puppeteer.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions',
+        '--disable-accelerated-2d-canvas',
+        '--disable-ipc-flooding-protection',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-sandbox',
+        '--safebrowsing-disable-auto-update',
+        '--ignore-certificate-errors',
+        '--ignore-certificate-errors-spki-list',
+        '--ignore-ssl-errors',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-web-security',
+        '--disable-features=site-per-process',
+        '--window-size=1920,1080',
+      ],
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
+      defaultViewport: { width: 1920, height: 1080 },
+    });
+    return browser;
+  },
+  destroy: async (browser) => {
     try {
-      if (fs.existsSync(chromePath)) {
-        return chromePath;
-      }
+      await browser.close();
     } catch (error) {
-      continue;
+      console.error('Error closing browser:', error);
     }
-  }
-
-  // If no Chrome found, return the default path for the platform
-  return platformPaths[0];
+  },
 };
 
-const getBrowserConfig = () => {
-  const executablePath = findChromePath();
-  
-  return {
-    executablePath,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      '--window-size=1920x1080',
-      '--disable-extensions',
-      '--disable-component-extensions-with-background-pages',
-      '--disable-default-apps',
-      '--mute-audio',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-features=site-per-process'
-    ],
-    headless: 'new',
-    timeout: parseInt(process.env.BROWSER_TIMEOUT || '60000'),
-    ignoreHTTPSErrors: true
-  };
-};
+const browserPool = genericPool.createPool(factory, {
+  max: POOL_MAX,
+  min: POOL_MIN,
+  testOnBorrow: true,
+  acquireTimeoutMillis: 60000,
+  idleTimeoutMillis: 30000,
+  evictionRunIntervalMillis: 15000,
+  numTestsPerEvictionRun: 3,
+  autostart: true,
+});
 
-module.exports = {
-  getBrowserConfig,
-  findChromePath
-}; 
+process.on('SIGTERM', async () => {
+  await browserPool.drain();
+  await browserPool.clear();
+});
+
+process.on('SIGINT', async () => {
+  await browserPool.drain();
+  await browserPool.clear();
+});
+
+module.exports = { browserPool }; 

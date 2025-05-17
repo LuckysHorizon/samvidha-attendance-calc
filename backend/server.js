@@ -7,7 +7,8 @@ const morgan = require('morgan');
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
-const { getBrowserConfig } = require('./config/browser');
+const { browserPool } = require('./config/browser');
+const { attendanceCache } = require('./config/cache');
 require('dotenv').config();
 
 // Configure logger with more detailed format
@@ -80,10 +81,10 @@ app.get('/health', (req, res) => {
 // Helper function to login and get browser session with improved error handling
 async function loginToSamvidha(username, password) {
   let browser;
+  let page;
   try {
-    browser = await puppeteer.launch(getBrowserConfig());
-    
-    const page = await browser.newPage();
+    browser = await browserPool.getBrowser();
+    page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
@@ -103,7 +104,7 @@ async function loginToSamvidha(username, password) {
       } catch (error) {
         retries--;
         if (retries === 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
@@ -146,9 +147,8 @@ async function loginToSamvidha(username, password) {
 
     return { browser, page };
   } catch (error) {
-    if (browser) {
-      await browser.close();
-    }
+    if (page) await page.close();
+    if (browser) await browserPool.releaseBrowser(browser);
     logger.error('Login error:', {
       error: error.message,
       stack: error.stack,
@@ -167,10 +167,19 @@ app.post('/fetch-attendance', async (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
+  // Check cache first
+  const cacheKey = `attendance_${username}`;
+  const cachedData = attendanceCache.get(cacheKey);
+  if (cachedData) {
+    return res.json(cachedData);
+  }
+
   let browser;
+  let page;
   try {
-    const { browser: b, page } = await loginToSamvidha(username, password);
+    const { browser: b, page: p } = await loginToSamvidha(username, password);
     browser = b;
+    page = p;
 
     // Navigate to biometric page
     await page.goto('https://samvidha.iare.ac.in/home?action=std_bio', { waitUntil: 'networkidle2' });
@@ -211,21 +220,25 @@ app.post('/fetch-attendance', async (req, res) => {
       daysNeeded = requiredPresent - attendanceData.summary.presentDays;
     }
 
-    res.json({
+    const responseData = {
       totalClasses: attendanceData.summary.totalDays,
       present: attendanceData.summary.presentDays,
       absent: attendanceData.summary.absentDays,
       attendancePercentage,
       daysNeeded,
       details: attendanceData.details
-    });
+    };
+
+    // Cache the response
+    attendanceCache.set(cacheKey, responseData);
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error in fetch-attendance:', error.message);
     res.status(500).json({ error: 'Failed to fetch attendance data: ' + error.message });
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (page) await page.close();
+    if (browser) await browserPool.releaseBrowser(browser);
   }
 });
 
@@ -333,25 +346,16 @@ const server = app.listen(port, () => {
   process.exit(1);
 });
 
-// Update graceful shutdown with better logging
+// Graceful shutdown
 const gracefulShutdown = async () => {
-  logger.info('Received shutdown signal', {
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-  server.close(() => {
-    logger.info('HTTP server closed', {
-      timestamp: new Date().toISOString()
-    });
+  logger.info('Received shutdown signal');
+  try {
+    await browserPool.closeAll();
     process.exit(0);
-  });
-  // Force shutdown after 10 seconds
-  setTimeout(() => {
-    logger.error('Could not close connections in time, forcefully shutting down', {
-      timestamp: new Date().toISOString()
-    });
+  } catch (error) {
+    logger.error('Error during shutdown:', error);
     process.exit(1);
-  }, 10000);
+  }
 };
 
 process.on('SIGTERM', gracefulShutdown);
