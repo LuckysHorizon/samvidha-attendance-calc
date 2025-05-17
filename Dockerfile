@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-slim AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /usr/src/app
 
@@ -41,16 +41,16 @@ COPY package*.json ./
 COPY .npmrc ./
 
 # Clean install dependencies
-RUN npm install -g npm@latest && \
-    npm cache clean --force && \
-    rm -rf node_modules && \
-    npm install --production --frozen-lockfile
+RUN npm cache clean --force && \
+    rm -rf node_modules package-lock.json && \
+    npm install --production && \
+    npm cache clean --force
 
 # Copy source code
 COPY . .
 
 # Production stage
-FROM node:18-slim
+FROM node:20-slim
 
 WORKDIR /usr/src/app
 
