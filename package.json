@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@puppeteer/browsers": "2.3.0",
-    "attendance-calculator": "file:",
     "body-parser": "1.20.3",
     "compression": "1.7.4",
     "cookie": "0.7.0",
