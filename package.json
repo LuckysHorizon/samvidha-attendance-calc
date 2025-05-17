@@ -11,24 +11,26 @@
     "test:prod": "node test-prod.js",
     "postinstall": "node -e \"try { require('fs').mkdirSync('logs', { recursive: true }); } catch(e) { if(e.code !== 'EEXIST') throw e; }\"",
     "docker:build": "docker build -t attendance-calculator .",
-    "docker:run": "docker run -p 3000:3000 attendance-calculator"
+    "docker:run": "docker run -p 3000:3000 attendance-calculator",
+    "prepare": "npm run generate-lockfile",
+    "generate-lockfile": "npm install --package-lock-only"
   },
   "dependencies": {
-    "attendance-calculator": "file:",
-    "compression": "^1.7.4",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "generic-pool": "^3.9.0",
-    "helmet": "^7.1.0",
-    "morgan": "^1.10.0",
-    "node-cache": "^5.1.2",
-    "puppeteer": "^22.8.2",
-    "winston": "^3.11.0"
+    "compression": "1.7.4",
+    "cors": "2.8.5",
+    "dotenv": "16.3.1",
+    "express": "4.18.2",
+    "express-rate-limit": "7.1.5",
+    "generic-pool": "3.9.0",
+    "helmet": "7.1.0",
+    "morgan": "1.10.0",
+    "node-cache": "5.1.2",
+    "puppeteer": "22.8.2",
+    "@puppeteer/browsers": "2.3.0",
+    "winston": "3.11.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "3.0.2"
   },
   "engines": {
     "node": ">=18.0.0"
