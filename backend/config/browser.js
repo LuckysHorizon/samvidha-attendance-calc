@@ -8,26 +8,23 @@ const calculatePoolSize = () => {
   const freeMemoryGB = os.freemem() / (1024 * 1024 * 1024);
   const cpuCount = os.cpus().length;
   
-  // Allocate pool size based on available resources
-  // Each Chrome instance typically uses 200-300MB RAM
-  const maxByMemory = Math.floor(freeMemoryGB / 0.5); // Allow 500MB per instance
-  const maxByCPU = Math.max(1, cpuCount - 1); // Leave one CPU core free
+  // More conservative pool sizing for stability
+  const maxByMemory = Math.floor(freeMemoryGB / 0.75); // Increased memory per instance
+  const maxByCPU = Math.max(1, Math.floor(cpuCount / 2)); // More conservative CPU usage
   
-  return Math.min(maxByMemory, maxByCPU);
+  return Math.min(maxByMemory, maxByCPU, 3); // Cap at 3 instances for stability
 };
 
-const POOL_MAX = process.env.BROWSER_POOL_MAX || calculatePoolSize();
-const POOL_MIN = process.env.BROWSER_POOL_MIN || Math.max(1, Math.floor(POOL_MAX / 2));
+const POOL_MAX = parseInt(process.env.BROWSER_POOL_MAX) || calculatePoolSize();
+const POOL_MIN = parseInt(process.env.BROWSER_POOL_MIN) || Math.max(1, Math.floor(POOL_MAX / 2));
 
 // Reusable page configuration
 const configureNewPage = async (page) => {
-  // Enable request interception with more granular control
   await page.setRequestInterception(true);
   page.on('request', (request) => {
     const resourceType = request.resourceType();
     const url = request.url();
     
-    // Block unnecessary resources
     if (['image', 'stylesheet', 'font', 'media'].includes(resourceType) ||
         url.includes('google-analytics') ||
         url.includes('doubleclick.net') ||
@@ -38,20 +35,23 @@ const configureNewPage = async (page) => {
     }
   });
 
-  // Optimize memory usage
-  await page.setCacheEnabled(false);
+  // Optimize page settings
+  await page.setCacheEnabled(true); // Enable cache for better performance
   await page.setBypassCSP(true);
-
-  // Set performance-oriented defaults
-  await page.setDefaultNavigationTimeout(30000);
-  await page.setDefaultTimeout(30000);
+  
+  // Use environment variables for timeouts with fallbacks
+  const navigationTimeout = parseInt(process.env.NAVIGATION_TIMEOUT) || 60000;
+  const requestTimeout = parseInt(process.env.REQUEST_TIMEOUT) || 60000;
+  
+  await page.setDefaultNavigationTimeout(navigationTimeout);
+  await page.setDefaultTimeout(requestTimeout);
 
   return page;
 };
 
 class BrowserPool {
   constructor() {
-    this.activeConnections = new Map(); // Changed to Map to store creation timestamps
+    this.activeConnections = new Map();
     this.initializePool();
   }
 
@@ -86,24 +86,30 @@ class BrowserPool {
               '--disable-web-security',
               '--disable-features=site-per-process',
               '--window-size=1920,1080',
-              `--js-flags=--max-old-space-size=${Math.floor(os.freemem() / (1024 * 1024))}`,
+              `--js-flags=--max-old-space-size=${Math.floor(os.freemem() / (1024 * 1024) * 0.75)}`,
+              '--disable-background-timer-throttling',
+              '--disable-backgrounding-occluded-windows',
+              '--disable-renderer-backgrounding',
             ],
             headless: 'new',
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
             defaultViewport: { width: 1920, height: 1080 },
-            protocolTimeout: 30000,
-            timeout: 30000,
+            protocolTimeout: parseInt(process.env.PROTOCOL_TIMEOUT) || 60000,
+            timeout: parseInt(process.env.BROWSER_LAUNCH_TIMEOUT) || 60000,
             waitForInitialPage: true,
+            handleSIGINT: false,
+            handleSIGTERM: false,
+            handleSIGHUP: false,
           });
 
           const pages = await browser.pages();
           const page = pages[0] || await browser.newPage();
           await configureNewPage(page);
 
-          // Store creation time and setup disconnection handler
           this.activeConnections.set(browser, {
             createdAt: Date.now(),
-            isDisconnected: false
+            isDisconnected: false,
+            lastUsed: Date.now()
           });
 
           browser.on('disconnected', () => {
@@ -131,7 +137,6 @@ class BrowserPool {
         } catch (error) {
           console.error('Error during browser cleanup:', error);
           try {
-            // Force cleanup if normal cleanup fails
             if (browser.process() != null) {
               browser.process().kill('SIGKILL');
             }
@@ -144,29 +149,39 @@ class BrowserPool {
       },
       validate: async (browser) => {
         try {
-          return browser.isConnected() && !this.activeConnections.get(browser)?.isDisconnected;
+          const isValid = browser.isConnected() && !this.activeConnections.get(browser)?.isDisconnected;
+          if (isValid) {
+            const browserInfo = this.activeConnections.get(browser);
+            if (browserInfo) {
+              browserInfo.lastUsed = Date.now();
+            }
+          }
+          return isValid;
         } catch (error) {
           return false;
         }
       }
     };
 
+    const idleTimeoutMillis = parseInt(process.env.POOL_IDLE_TIMEOUT) || 300000; // 5 minutes
+    const acquireTimeoutMillis = parseInt(process.env.POOL_ACQUIRE_TIMEOUT) || 120000; // 2 minutes
+    const evictionRunIntervalMillis = parseInt(process.env.POOL_EVICTION_INTERVAL) || 60000; // 1 minute
+
     this.pool = genericPool.createPool(factory, {
       max: POOL_MAX,
       min: POOL_MIN,
       testOnBorrow: true,
-      acquireTimeoutMillis: 60000,
-      idleTimeoutMillis: 30000,
-      evictionRunIntervalMillis: 15000,
+      acquireTimeoutMillis: acquireTimeoutMillis,
+      idleTimeoutMillis: idleTimeoutMillis,
+      evictionRunIntervalMillis: evictionRunIntervalMillis,
       numTestsPerEvictionRun: 3,
       autostart: true,
-      fifo: false,
+      fifo: true, // Changed to true for better resource utilization
       priorityRange: 1,
-      maxWaitingClients: 10,
+      maxWaitingClients: POOL_MAX * 2,
       validateOnBorrow: true,
     });
 
-    // Setup periodic health check
     this.startHealthCheck();
   }
 
