@@ -57,7 +57,7 @@ function getChromePath() {
     case 'darwin':
       return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
     default:
-      return '/usr/bin/google-chrome';
+      return process.env.CHROME_PATH || '/usr/bin/google-chrome';
   }
 }
 
@@ -65,6 +65,7 @@ class BrowserPool {
   constructor() {
     this.browsers = [];
     this.maxBrowsers = 3;
+    this.disconnectionTimeout = 300000; // 5 minutes
     this.initializePool();
   }
 
@@ -168,74 +169,119 @@ class BrowserPool {
       const availableBrowser = this.browsers.find(b => !b.inUse);
       if (availableBrowser) {
         availableBrowser.inUse = true;
+        this.resetDisconnectionTimer(availableBrowser);
         return availableBrowser.browser;
       }
 
       // Create new browser if pool isn't full
       if (this.browsers.length < this.maxBrowsers) {
-        const browser = await puppeteer.launch({
-          headless: 'new',
-          executablePath: getChromePath(),
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--disable-gpu',
-            '--window-size=1920,1080'
-          ]
-        });
-
-        const browserEntry = {
+        const browser = await this.createBrowser();
+        const browserWrapper = {
           browser,
-          inUse: true
+          inUse: true,
+          disconnectionTimer: null
         };
-
-        this.browsers.push(browserEntry);
+        this.browsers.push(browserWrapper);
+        this.resetDisconnectionTimer(browserWrapper);
         return browser;
       }
 
       // Wait for a browser to become available
       return new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          const availableBrowser = this.browsers.find(b => !b.inUse);
-          if (availableBrowser) {
+        const checkInterval = setInterval(async () => {
+          const freeBrowser = this.browsers.find(b => !b.inUse);
+          if (freeBrowser) {
             clearInterval(checkInterval);
-            availableBrowser.inUse = true;
-            resolve(availableBrowser.browser);
+            freeBrowser.inUse = true;
+            this.resetDisconnectionTimer(freeBrowser);
+            resolve(freeBrowser.browser);
           }
         }, 1000);
       });
     } catch (error) {
-      console.error('Error creating browser instance:', error);
+      console.error('Error getting browser:', error);
       throw error;
     }
   }
 
-  async releaseBrowser(browser) {
-    const browserEntry = this.browsers.find(b => b.browser === browser);
-    if (browserEntry) {
-      browserEntry.inUse = false;
+  async createBrowser() {
+    const args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--window-size=1920x1080'
+    ];
+
+    return await puppeteer.launch({
+      executablePath: getChromePath(),
+      headless: 'new',
+      args,
+      defaultViewport: { width: 1920, height: 1080 }
+    });
+  }
+
+  resetDisconnectionTimer(browserWrapper) {
+    if (browserWrapper.disconnectionTimer) {
+      clearTimeout(browserWrapper.disconnectionTimer);
+    }
+
+    browserWrapper.disconnectionTimer = setTimeout(async () => {
+      await this.handleDisconnection(browserWrapper);
+    }, this.disconnectionTimeout);
+  }
+
+  async handleDisconnection(browserWrapper) {
+    try {
+      const index = this.browsers.indexOf(browserWrapper);
+      if (index !== -1) {
+        if (browserWrapper.browser) {
+          try {
+            await browserWrapper.browser.close();
+          } catch (error) {
+            console.error('Error closing browser:', error);
+          }
+        }
+        this.browsers.splice(index, 1);
+      }
+    } catch (error) {
+      console.error('Error handling browser disconnection:', error);
     }
   }
 
-  async closeAll() {
-    await Promise.all(this.browsers.map(async (b) => {
-      try {
-        await b.browser.close();
-      } catch (error) {
-        console.error('Error closing browser:', error);
+  async releaseBrowser(browser) {
+    try {
+      const browserWrapper = this.browsers.find(b => b.browser === browser);
+      if (browserWrapper) {
+        browserWrapper.inUse = false;
+        this.resetDisconnectionTimer(browserWrapper);
       }
-    }));
-    this.browsers = [];
+    } catch (error) {
+      console.error('Error releasing browser:', error);
+    }
   }
 
-  async drain() {
-    return await this.pool.drain();
-  }
-
-  async clear() {
-    return await this.pool.clear();
+  async cleanup() {
+    try {
+      await Promise.all(
+        this.browsers.map(async (browserWrapper) => {
+          if (browserWrapper.disconnectionTimer) {
+            clearTimeout(browserWrapper.disconnectionTimer);
+          }
+          if (browserWrapper.browser) {
+            try {
+              await browserWrapper.browser.close();
+            } catch (error) {
+              console.error('Error closing browser during cleanup:', error);
+            }
+          }
+        })
+      );
+      this.browsers = [];
+    } catch (error) {
+      console.error('Error during browser pool cleanup:', error);
+    }
   }
 
   getStats() {
@@ -258,7 +304,7 @@ const cleanup = async (signal) => {
   try {
     await browserPool.drain();
     await browserPool.clear();
-    await browserPool.closeAll();
+    await browserPool.cleanup();
     process.exit(0);
   } catch (error) {
     console.error('Error during cleanup:', error);
