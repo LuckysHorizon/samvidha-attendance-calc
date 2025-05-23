@@ -89,54 +89,102 @@
 
     <!-- Class Attendance Section -->
     <div id="classSection" class="hidden fade-in">
-      <h2 class="text-3xl sm:text-4xl font-semibold text-white mb-8 text-center">Class Attendance</h2>
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <!-- Overall Attendance Card & Circular Chart -->
-        <div class="flex flex-col gap-6 lg:col-span-1">
-          <div class="glass-container p-6 card flex flex-col items-center justify-center">
-            <h3 class="text-xl font-medium text-gray-200 mb-2">Overall Course Attendance</h3>
-            <div class="w-40 h-40 flex items-center justify-center">
-              <canvas id="overallAttendanceChart"></canvas>
-              <div id="overallChartCenterText" class="absolute text-2xl font-bold text-blue-400"></div>
+      <h2 class="text-3xl sm:text-4xl font-semibold text-white mb-8 text-center">Course Attendance</h2>
+      <div class="grid grid-cols-1 gap-6">
+        <!-- Overall Course Stats -->
+        <div class="glass-container p-6">
+          <h3 class="text-xl font-semibold text-white mb-4">Overall Course Statistics</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p class="text-gray-400">Total Courses</p>
+              <p id="totalCourses" class="text-2xl font-bold text-blue-400">0</p>
             </div>
-          </div>
-          <div class="glass-container p-4 card flex flex-col items-center justify-center">
-            <div class="flex flex-col sm:flex-row gap-4 w-full justify-between">
-              <div class="flex-1 text-center">
-                <div class="text-sm text-gray-300">Total Classes</div>
-                <div id="overallTotalClasses" class="text-lg font-bold text-blue-300"></div>
-              </div>
-              <div class="flex-1 text-center">
-                <div class="text-sm text-gray-300">Present</div>
-                <div id="overallPresentClasses" class="text-lg font-bold text-green-300"></div>
-              </div>
-              <div class="flex-1 text-center">
-                <div class="text-sm text-gray-300">Absent</div>
-                <div id="overallAbsentClasses" class="text-lg font-bold text-red-300"></div>
-              </div>
+            <div>
+              <p class="text-gray-400">Average Attendance</p>
+              <p id="averageAttendance" class="text-2xl font-bold text-green-400">0%</p>
             </div>
-            <div class="mt-4 w-full text-center">
-              <div class="text-sm text-gray-300">Classes Needed for 75%</div>
-              <div id="overallClassesNeeded" class="text-lg font-bold text-orange-300"></div>
+            <div>
+              <p class="text-gray-400">Courses Below 75%</p>
+              <p id="coursesBelow75" class="text-2xl font-bold text-red-400">0</p>
+            </div>
+            <div>
+              <p class="text-gray-400">Courses Above 75%</p>
+              <p id="coursesAbove75" class="text-2xl font-bold text-green-400">0</p>
             </div>
           </div>
         </div>
-        <!-- Topic Details Table -->
-        <div class="glass-container p-6 card lg:col-span-2 overflow-x-auto">
-          <h3 class="text-xl font-medium text-gray-200 mb-4">Topic Details</h3>
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="text-gray-200 border-b border-gray-700">
-                <th class="px-2 py-2 text-left">Topic</th>
-                <th class="px-2 py-2 text-left">Date</th>
-                <th class="px-2 py-2 text-left">Attendance</th>
-                <th class="px-2 py-2 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody id="subjectTableBody">
-              <!-- Topic rows will be populated here -->
-            </tbody>
-          </table>
+
+        <!-- Course Cards Container -->
+        <div id="courseCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- Course cards will be dynamically added here -->
+        </div>
+        
+        <!-- Course Details Modal -->
+        <div id="courseDetailsModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50 hidden">
+          <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+              <h3 id="modalCourseName" class="text-xl font-bold text-white"></h3>
+              <button onclick="closeCourseModal()" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div class="glass-container p-4">
+                <h4 class="text-gray-300 mb-2">Attendance Statistics</h4>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <p class="text-gray-400">Total Classes</p>
+                    <p id="modalTotalClasses" class="text-xl font-bold text-blue-400"></p>
+                  </div>
+                  <div>
+                    <p class="text-gray-400">Present</p>
+                    <p id="modalPresent" class="text-xl font-bold text-green-400"></p>
+                  </div>
+                  <div>
+                    <p class="text-gray-400">Absent</p>
+                    <p id="modalAbsent" class="text-xl font-bold text-red-400"></p>
+                  </div>
+                  <div>
+                    <p class="text-gray-400">Percentage</p>
+                    <p id="modalPercentage" class="text-xl font-bold text-blue-400"></p>
+                  </div>
+                </div>
+                <!-- Bunking Information -->
+                <div class="mt-4 p-3 rounded-lg bg-gray-700/50">
+                  <h5 class="text-gray-300 mb-2">Bunking Calculator</h5>
+                  <div id="modalBunkInfo" class="text-sm">
+                    <!-- Bunking info will be added here -->
+                  </div>
+                </div>
+              </div>
+              <div class="glass-container p-4 flex items-center justify-center">
+                <div class="chart-wrapper w-full max-w-[150px] md:max-w-[200px]">
+                  <canvas id="modalAttendanceChart"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="glass-container p-4">
+              <h4 class="text-gray-300 mb-4">Class Details</h4>
+              <div class="overflow-x-auto">
+                <table class="min-w-full">
+                  <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                      <th class="px-4 py-2 text-left">Date</th>
+                      <th class="px-4 py-2 text-left">Period</th>
+                      <th class="px-4 py-2 text-left">Topic</th>
+                      <th class="px-4 py-2 text-left">Status</th>
+                      <th class="px-4 py-2 text-left">Resources</th>
+                    </tr>
+                  </thead>
+                  <tbody id="modalClassDetails" class="text-gray-300">
+                    <!-- Class details will be populated here -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -334,7 +382,7 @@
         if (!response.ok) {
           const errorData = await response.json();
           if (errorData.error === 'Invalid credentials') {
-            hideLoading(); // Hide loading before showing credentials modal
+            hideLoading();
             showCredentialsModal();
             document.getElementById('credentialsError').classList.remove('hidden');
             throw new Error('Invalid credentials');
@@ -343,148 +391,253 @@
         }
 
         const data = await response.json();
-        if (!data.classAttendanceData || data.classAttendanceData.length === 0) {
-          throw new Error('No attendance data available');
+        if (!data.courseData || data.courseData.length === 0) {
+          throw new Error('No course data available');
         }
 
-        // Clear existing data before updating
-        const tableBody = document.getElementById('subjectTableBody');
-        tableBody.innerHTML = '';
-        
-        if (subjectChart) {
-          subjectChart.destroy();
-          subjectChart = null;
-        }
-
-        updateClassAttendanceUI(data.classAttendanceData);
+        updateCourseAttendanceUI(data.courseData);
       } catch (error) {
         console.error('Error fetching class attendance:', error);
-        const tableBody = document.getElementById('subjectTableBody');
-        tableBody.innerHTML = `
-          <tr>
-            <td colspan="3" class="px-4 py-4 text-center text-red-400">
-              ${error.message || 'Failed to fetch class attendance data. Please try again.'}
-            </td>
-          </tr>
+        const courseCardsContainer = document.getElementById('courseCardsContainer');
+        courseCardsContainer.innerHTML = `
+          <div class="col-span-full text-center text-red-400 p-4">
+            ${error.message || 'Failed to fetch course attendance data. Please try again.'}
+          </div>
         `;
-        
-        if (subjectChart) {
-          subjectChart.destroy();
-          subjectChart = null;
-        }
       } finally {
         hideLoading();
       }
     }
 
-    function updateClassAttendanceUI(classAttendanceData) {
-      // Calculate overall course attendance and summary stats
-      let totalAttended = 0, totalClasses = 0, totalAbsent = 0;
-      classAttendanceData.forEach(subject => {
-        totalAttended += subject.classesAttended;
-        totalClasses += subject.totalClasses;
-        totalAbsent += subject.absent;
+    function updateCourseAttendanceUI(courseData) {
+      const courseCardsContainer = document.getElementById('courseCardsContainer');
+      courseCardsContainer.innerHTML = '';
+
+      // Filter out internships and calculate overall statistics
+      const regularCourses = courseData.filter(course => 
+        !course.courseName.toLowerCase().includes('internship'));
+      
+      const totalCourses = regularCourses.length;
+      const averageAttendance = regularCourses.reduce((sum, course) => 
+        sum + parseFloat(course.statistics.attendancePercentage), 0) / totalCourses;
+      const coursesBelow75 = regularCourses.filter(course => 
+        parseFloat(course.statistics.attendancePercentage) < 75).length;
+      const coursesAbove75 = totalCourses - coursesBelow75;
+
+      // Update overall stats
+      document.getElementById('totalCourses').textContent = totalCourses;
+      document.getElementById('averageAttendance').textContent = `${averageAttendance.toFixed(2)}%`;
+      document.getElementById('coursesBelow75').textContent = coursesBelow75;
+      document.getElementById('coursesAbove75').textContent = coursesAbove75;
+
+      courseData.forEach(course => {
+        const card = document.createElement('div');
+        card.className = 'glass-container p-6 cursor-pointer hover:bg-gray-700/30 transition-colors';
+        card.onclick = () => showCourseDetails(course);
+
+        const attendanceColor = course.statistics.attendancePercentage >= 75 ? 'text-green-400' : 'text-red-400';
+        const isInternship = course.courseName.toLowerCase().includes('internship');
+        
+        // Calculate bunkable classes
+        const bunkableClasses = calculateBunkableClasses(course.statistics);
+        
+        card.innerHTML = `
+          <h3 class="text-lg font-semibold text-white mb-4">${course.courseName}</h3>
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p class="text-gray-400">Total Classes</p>
+              <p class="text-white">${course.statistics.totalClasses}</p>
+            </div>
+            <div>
+              <p class="text-gray-400">Present</p>
+              <p class="text-green-400">${course.statistics.presentClasses}</p>
+            </div>
+            <div>
+              <p class="text-gray-400">Absent</p>
+              <p class="text-red-400">${course.statistics.absentClasses}</p>
+            </div>
+            <div>
+              <p class="text-gray-400">Attendance</p>
+              <p class="${attendanceColor}">${course.statistics.attendancePercentage}%</p>
+            </div>
+          </div>
+          ${!isInternship ? `
+            <div class="mt-3 pt-3 border-t border-gray-700">
+              <p class="text-sm text-gray-400">
+                ${bunkableClasses > 0 
+                  ? `You can safely skip ${bunkableClasses} more class${bunkableClasses > 1 ? 'es' : ''}`
+                  : 'No more classes can be skipped'}
+              </p>
+            </div>
+          ` : ''}
+          <div class="mt-3 text-center">
+            <p class="text-sm text-blue-400 hover:text-blue-300 cursor-pointer">
+              Click here to know more →
+            </p>
+          </div>
+        `;
+
+        courseCardsContainer.appendChild(card);
       });
-      const overall = totalClasses > 0 ? ((totalAttended / totalClasses) * 100).toFixed(2) : '0.00';
+    }
 
-      // Set summary stats only if elements exist
-      const overallCourseAttendanceElem = document.getElementById('overallCourseAttendance');
-      if (overallCourseAttendanceElem) overallCourseAttendanceElem.textContent = overall + '%';
-      const overallTotalClassesElem = document.getElementById('overallTotalClasses');
-      if (overallTotalClassesElem) overallTotalClassesElem.textContent = totalClasses;
-      const overallPresentClassesElem = document.getElementById('overallPresentClasses');
-      if (overallPresentClassesElem) overallPresentClassesElem.textContent = totalAttended;
-      const overallAbsentClassesElem = document.getElementById('overallAbsentClasses');
-      if (overallAbsentClassesElem) overallAbsentClassesElem.textContent = totalAbsent;
+    function calculateBunkableClasses(stats) {
+      const totalClasses = stats.totalClasses;
+      const presentClasses = stats.presentClasses;
+      
+      // Calculate how many classes can be missed while maintaining 75% attendance
+      const minRequiredClasses = Math.ceil(totalClasses * 0.75);
+      const bunkableClasses = presentClasses - minRequiredClasses;
+      
+      return Math.max(0, bunkableClasses);
+    }
 
-      // Calculate classes needed for 75%
-      let classesNeeded = 0;
-      if (overall < 75 && totalClasses > 0) {
-        classesNeeded = Math.ceil((0.75 * totalClasses - totalAttended) / 0.25);
-        if (classesNeeded < 0) classesNeeded = 0;
+    function calculateFutureAttendance(stats) {
+      const totalClasses = stats.totalClasses;
+      const presentClasses = stats.presentClasses;
+      
+      // Calculate current percentage
+      const currentPercentage = (presentClasses / totalClasses) * 100;
+      
+      // If below 75%, calculate classes needed to reach 75%
+      if (currentPercentage < 75) {
+        const classesNeeded = Math.ceil((0.75 * totalClasses - presentClasses) / 0.25);
+        return {
+          canBunk: false,
+          message: `Need to attend next ${classesNeeded} classes to reach 75%`
+        };
       }
-      const overallClassesNeededElem = document.getElementById('overallClassesNeeded');
-      if (overallClassesNeededElem) overallClassesNeededElem.textContent = classesNeeded;
+      
+      // Calculate bunkable classes
+      const bunkableClasses = calculateBunkableClasses(stats);
+      
+      return {
+        canBunk: bunkableClasses > 0,
+        message: bunkableClasses > 0 
+          ? `You can skip ${bunkableClasses} more class${bunkableClasses > 1 ? 'es' : ''} and still maintain 75%`
+          : 'You need to attend all remaining classes to maintain 75%'
+      };
+    }
 
-      // Render circular chart for overall attendance
-      if (window.overallAttendanceChartInstance) {
-        window.overallAttendanceChartInstance.destroy();
+    let currentModalChart = null;
+
+    function showCourseDetails(course) {
+      const modal = document.getElementById('courseDetailsModal');
+      document.getElementById('modalCourseName').textContent = course.courseName;
+      document.getElementById('modalTotalClasses').textContent = course.statistics.totalClasses;
+      document.getElementById('modalPresent').textContent = course.statistics.presentClasses;
+      document.getElementById('modalAbsent').textContent = course.statistics.absentClasses;
+      document.getElementById('modalPercentage').textContent = `${course.statistics.attendancePercentage}%`;
+
+      const isInternship = course.courseName.toLowerCase().includes('internship');
+
+      // Update bunking information
+      const bunkInfoElement = document.getElementById('modalBunkInfo');
+      if (!isInternship) {
+        const bunkInfo = calculateFutureAttendance(course.statistics);
+        bunkInfoElement.innerHTML = `
+          <p class="${bunkInfo.canBunk ? 'text-green-400' : 'text-yellow-400'}">
+            ${bunkInfo.message}
+          </p>
+          <p class="text-gray-400 mt-1">
+            Current Status: ${course.statistics.attendancePercentage >= 75 ? 
+              'Above minimum requirement' : 
+              'Below minimum requirement'}
+          </p>
+        `;
+      } else {
+        bunkInfoElement.innerHTML = `
+          <p class="text-gray-400">
+            Bunking calculations not applicable for internships
+          </p>
+        `;
       }
-      const ctx = document.getElementById('overallAttendanceChart').getContext('2d');
-      window.overallAttendanceChartInstance = new Chart(ctx, {
+
+      // Update class details table
+      const tableBody = document.getElementById('modalClassDetails');
+      tableBody.innerHTML = '';
+      course.classes.forEach(classInfo => {
+        const row = document.createElement('tr');
+        row.className = 'border-b border-gray-700';
+        const statusClass = classInfo.status === 'PRESENT' ? 'text-green-400' : 'text-red-400';
+        
+        row.innerHTML = `
+          <td class="px-4 py-2">${classInfo.date}</td>
+          <td class="px-4 py-2">${classInfo.period}</td>
+          <td class="px-4 py-2">${classInfo.topicsCovered}</td>
+          <td class="px-4 py-2 ${statusClass}">${classInfo.status}</td>
+          <td class="px-4 py-2">
+            ${classInfo.youtubeLink !== 'NIL' ? 
+              `<a href="${classInfo.youtubeLink}" target="_blank" class="text-blue-400 hover:text-blue-300">YouTube</a>` : 
+              ''}
+            ${classInfo.powerpoint ? 
+              `<a href="${classInfo.powerpoint}" target="_blank" class="text-blue-400 hover:text-blue-300 ml-2">PPT</a>` : 
+              ''}
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      // Update chart
+      if (currentModalChart) {
+        currentModalChart.destroy();
+      }
+
+      const ctx = document.getElementById('modalAttendanceChart').getContext('2d');
+      currentModalChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
           labels: ['Present', 'Absent'],
           datasets: [{
-            data: [totalAttended, totalAbsent],
-            backgroundColor: [
-              'rgba(16, 185, 129, 0.8)', // green
-              'rgba(239, 68, 68, 0.8)'   // red
-            ],
-            borderColor: [
-              'rgb(16, 185, 129)',
-              'rgb(239, 68, 68)'
-            ],
-            borderWidth: 2
+            data: [course.statistics.presentClasses, course.statistics.absentClasses],
+            backgroundColor: ['rgba(34, 197, 94, 0.8)', 'rgba(239, 68, 68, 0.8)'],
+            borderColor: ['rgb(34, 197, 94)', 'rgb(239, 68, 68)'],
+            borderWidth: 1
           }]
         },
         options: {
-          cutout: '70%',
+          responsive: true,
+          maintainAspectRatio: true,
+          cutout: '75%',
+          layout: {
+            padding: 10
+          },
           plugins: {
             legend: {
-              display: false
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const label = context.label || '';
-                  const value = context.raw || 0;
-                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-                  return `${label}: ${value} (${percentage}%)`;
-                }
+              display: true,
+              position: 'bottom',
+              labels: {
+                boxWidth: 12,
+                padding: 10,
+                font: {
+                  size: 11,
+                  family: 'Inter'
+                },
+                color: '#9ca3af'
               }
             }
           }
-        },
-        plugins: [{
-          id: 'centerText',
-          afterDraw(chart) {
-            const { ctx, width, height } = chart;
-            ctx.save();
-            ctx.font = 'bold 22px Inter';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#3b82f6';
-            ctx.clearRect(width/2-40, height/2-20, 80, 40);
-            ctx.fillText(`${overall}%`, width / 2, height / 2);
-            ctx.restore();
-          }
-        }]
+        }
       });
 
-      // Update topic table
-      const tableBody = document.getElementById('subjectTableBody');
-      tableBody.innerHTML = '';
-      classAttendanceData.forEach(subject => {
-        const row = document.createElement('tr');
-        row.className = 'text-gray-300 border-b border-gray-700 hover:bg-gray-700/30';
-        const statusClass = subject.percentage >= 75 ? 'text-green-400' : 'text-red-400';
-        const statusText = subject.percentage >= 75 ? 'PRESENT' : 'ABSENT';
-        row.innerHTML = `
-          <td class="px-2 py-2">${subject.subjectName}</td>
-          <td class="px-2 py-2">${subject.date ? subject.date : '-'}</td>
-          <td class="px-2 py-2">
-            <div class="flex flex-col">
-              <span>${subject.percentage}%</span>
-              <span class="text-xs text-gray-400">${subject.attendanceInfo}</span>
-            </div>
-          </td>
-          <td class="px-2 py-2 ${statusClass}">${statusText}</td>
-        `;
-        tableBody.appendChild(row);
-      });
+      modal.classList.remove('hidden');
     }
+
+    function closeCourseModal() {
+      const modal = document.getElementById('courseDetailsModal');
+      modal.classList.add('hidden');
+      if (currentModalChart) {
+        currentModalChart.destroy();
+        currentModalChart = null;
+      }
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('courseDetailsModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('courseDetailsModal')) {
+        closeCourseModal();
+      }
+    });
 
     // Tab Navigation
     const biometricTab = document.getElementById('biometricTab');
@@ -515,28 +668,27 @@
 
     // Logout Functionality
     document.getElementById('logoutBtn').addEventListener('click', () => {
-      if (subjectChart) {
-        subjectChart.destroy();
-        subjectChart = null;
-      }
-      const tableBody = document.getElementById('subjectTableBody');
-      tableBody.innerHTML = '';
-      
+      // Clear all stored data
       localStorage.removeItem('attendanceData');
       localStorage.removeItem('username');
       localStorage.removeItem('password');
-      updateUserDisplay();
+      
+      // Clear any charts
+      if (currentModalChart) {
+        currentModalChart.destroy();
+        currentModalChart = null;
+      }
+      
+      // Redirect to login page
       window.location.href = 'index.html';
     });
 
     // Clear any existing data on page load
     window.addEventListener('DOMContentLoaded', () => {
-      if (subjectChart) {
-        subjectChart.destroy();
-        subjectChart = null;
+      if (currentModalChart) {
+        currentModalChart.destroy();
+        currentModalChart = null;
       }
-      const tableBody = document.getElementById('subjectTableBody');
-      tableBody.innerHTML = '';
       checkCredentials();
       updateUserDisplay();
     });
@@ -628,6 +780,32 @@
         margin-top: 0.5rem;
         font-size: 0.875rem;
       }
+
+      .chart-wrapper {
+        max-width: 120px !important;
+      }
+      
+      #modalAttendanceChart {
+        width: 100% !important;
+        height: auto !important;
+      }
+      
+      /* Adjust modal content for mobile */
+      #courseDetailsModal .bg-gray-800 {
+        width: 95%;
+        margin: 1rem;
+        max-height: 85vh;
+      }
+      
+      /* Make the grid layout more compact on mobile */
+      #courseDetailsModal .grid {
+        gap: 0.5rem !important;
+      }
+      
+      /* Adjust padding for mobile */
+      #courseDetailsModal .glass-container {
+        padding: 0.75rem !important;
+      }
     }
 
     /* Tablet-specific styles */
@@ -643,6 +821,10 @@
 
       .tab-button, .logout-button {
         padding: 0.5rem 1rem;
+      }
+
+      .chart-wrapper {
+        max-width: 150px !important;
       }
     }
 
@@ -671,6 +853,12 @@
       background: rgba(255, 255, 255, 0.1);
       border-radius: 0.375rem;
       backdrop-filter: blur(4px);
+    }
+
+    /* Add responsive chart styles */
+    .chart-wrapper {
+      position: relative;
+      margin: 0 auto;
     }
   </style>
 </body>

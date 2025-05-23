@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const genericPool = require('generic-pool');
 const os = require('os');
 
@@ -49,9 +49,22 @@ const configureNewPage = async (page) => {
   return page;
 };
 
+// Function to get Chrome path based on OS
+function getChromePath() {
+  switch (os.platform()) {
+    case 'win32':
+      return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    case 'darwin':
+      return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    default:
+      return '/usr/bin/google-chrome';
+  }
+}
+
 class BrowserPool {
   constructor() {
-    this.activeConnections = new Map();
+    this.browsers = [];
+    this.maxBrowsers = 3;
     this.initializePool();
   }
 
@@ -60,62 +73,24 @@ class BrowserPool {
       create: async () => {
         try {
           const browser = await puppeteer.launch({
+            headless: 'new',
+            executablePath: getChromePath(),
             args: [
               '--no-sandbox',
               '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--no-first-run',
-              '--no-zygote',
-              '--single-process',
-              '--disable-extensions',
               '--disable-accelerated-2d-canvas',
-              '--disable-ipc-flooding-protection',
-              '--disable-background-networking',
-              '--disable-default-apps',
-              '--disable-sync',
-              '--disable-translate',
-              '--hide-scrollbars',
-              '--metrics-recording-only',
-              '--mute-audio',
-              '--safebrowsing-disable-auto-update',
-              '--ignore-certificate-errors',
-              '--ignore-certificate-errors-spki-list',
-              '--ignore-ssl-errors',
-              '--disable-features=IsolateOrigins,site-per-process',
-              '--disable-web-security',
-              '--disable-features=site-per-process',
-              '--window-size=1920,1080',
-              `--js-flags=--max-old-space-size=${Math.floor(os.freemem() / (1024 * 1024) * 0.75)}`,
-              '--disable-background-timer-throttling',
-              '--disable-backgrounding-occluded-windows',
-              '--disable-renderer-backgrounding',
-            ],
-            headless: 'new',
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
-            defaultViewport: { width: 1920, height: 1080 },
-            protocolTimeout: parseInt(process.env.PROTOCOL_TIMEOUT) || 60000,
-            timeout: parseInt(process.env.BROWSER_LAUNCH_TIMEOUT) || 60000,
-            waitForInitialPage: true,
-            handleSIGINT: false,
-            handleSIGTERM: false,
-            handleSIGHUP: false,
+              '--disable-gpu',
+              '--window-size=1920,1080'
+            ]
           });
 
-          const pages = await browser.pages();
-          const page = pages[0] || await browser.newPage();
-          await configureNewPage(page);
+          const browserEntry = {
+            browser,
+            inUse: true
+          };
 
-          this.activeConnections.set(browser, {
-            createdAt: Date.now(),
-            isDisconnected: false,
-            lastUsed: Date.now()
-          });
-
-          browser.on('disconnected', () => {
-            this.handleDisconnection(browser);
-          });
-
+          this.browsers.push(browserEntry);
           return browser;
         } catch (error) {
           console.error('Error creating browser instance:', error);
@@ -126,14 +101,10 @@ class BrowserPool {
         try {
           if (!browser.isConnected()) {
             console.log('Browser already disconnected, skipping normal cleanup');
-            this.activeConnections.delete(browser);
             return;
           }
 
-          const pages = await browser.pages();
-          await Promise.all(pages.map(page => page.close().catch(console.error)));
           await browser.close();
-          this.activeConnections.delete(browser);
         } catch (error) {
           console.error('Error during browser cleanup:', error);
           try {
@@ -142,20 +113,12 @@ class BrowserPool {
             }
           } catch (e) {
             console.error('Error during force cleanup:', e);
-          } finally {
-            this.activeConnections.delete(browser);
           }
         }
       },
       validate: async (browser) => {
         try {
-          const isValid = browser.isConnected() && !this.activeConnections.get(browser)?.isDisconnected;
-          if (isValid) {
-            const browserInfo = this.activeConnections.get(browser);
-            if (browserInfo) {
-              browserInfo.lastUsed = Date.now();
-            }
-          }
+          const isValid = browser.isConnected();
           return isValid;
         } catch (error) {
           return false;
@@ -185,36 +148,12 @@ class BrowserPool {
     this.startHealthCheck();
   }
 
-  async handleDisconnection(browser) {
-    try {
-      const browserInfo = this.activeConnections.get(browser);
-      if (browserInfo) {
-        browserInfo.isDisconnected = true;
-        
-        // Only attempt to destroy if the browser was created recently
-        const age = Date.now() - browserInfo.createdAt;
-        if (age < 300000) { // 5 minutes
-          console.log('Recent browser disconnected, attempting cleanup');
-          await this.pool.destroy(browser).catch(() => {
-            console.log('Expected: Resource not in pool (already cleaned up)');
-          });
-        } else {
-          console.log('Old browser disconnected, skipping pool cleanup');
-          this.activeConnections.delete(browser);
-        }
-      }
-    } catch (error) {
-      console.error('Error handling browser disconnection:', error);
-      this.activeConnections.delete(browser);
-    }
-  }
-
   startHealthCheck() {
     setInterval(async () => {
       try {
-        for (const [browser, info] of this.activeConnections) {
-          if (!browser.isConnected() || info.isDisconnected) {
-            await this.handleDisconnection(browser);
+        for (const browser of this.browsers) {
+          if (!browser.browser.isConnected()) {
+            await this.handleDisconnection(browser.browser);
           }
         }
       } catch (error) {
@@ -224,22 +163,71 @@ class BrowserPool {
   }
 
   async getBrowser() {
-    const browser = await this.pool.acquire();
-    return browser;
+    try {
+      // Try to reuse an existing browser
+      const availableBrowser = this.browsers.find(b => !b.inUse);
+      if (availableBrowser) {
+        availableBrowser.inUse = true;
+        return availableBrowser.browser;
+      }
+
+      // Create new browser if pool isn't full
+      if (this.browsers.length < this.maxBrowsers) {
+        const browser = await puppeteer.launch({
+          headless: 'new',
+          executablePath: getChromePath(),
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--window-size=1920,1080'
+          ]
+        });
+
+        const browserEntry = {
+          browser,
+          inUse: true
+        };
+
+        this.browsers.push(browserEntry);
+        return browser;
+      }
+
+      // Wait for a browser to become available
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          const availableBrowser = this.browsers.find(b => !b.inUse);
+          if (availableBrowser) {
+            clearInterval(checkInterval);
+            availableBrowser.inUse = true;
+            resolve(availableBrowser.browser);
+          }
+        }, 1000);
+      });
+    } catch (error) {
+      console.error('Error creating browser instance:', error);
+      throw error;
+    }
   }
 
   async releaseBrowser(browser) {
-    try {
-      if (!browser.isConnected()) {
-        console.log('Browser disconnected, handling as disconnection instead of release');
-        await this.handleDisconnection(browser);
-        return;
-      }
-      await this.pool.release(browser);
-    } catch (error) {
-      console.error('Error releasing browser:', error);
-      await this.handleDisconnection(browser);
+    const browserEntry = this.browsers.find(b => b.browser === browser);
+    if (browserEntry) {
+      browserEntry.inUse = false;
     }
+  }
+
+  async closeAll() {
+    await Promise.all(this.browsers.map(async (b) => {
+      try {
+        await b.browser.close();
+      } catch (error) {
+        console.error('Error closing browser:', error);
+      }
+    }));
+    this.browsers = [];
   }
 
   async drain() {
@@ -252,10 +240,10 @@ class BrowserPool {
 
   getStats() {
     return {
-      active: this.activeConnections.size,
+      active: this.browsers.length,
       max: POOL_MAX,
       min: POOL_MIN,
-      spareResourceCapacity: POOL_MAX - this.activeConnections.size,
+      spareResourceCapacity: POOL_MAX - this.browsers.length,
       totalSystemMemory: os.totalmem(),
       freeSystemMemory: os.freemem(),
     };
@@ -270,6 +258,7 @@ const cleanup = async (signal) => {
   try {
     await browserPool.drain();
     await browserPool.clear();
+    await browserPool.closeAll();
     process.exit(0);
   } catch (error) {
     console.error('Error during cleanup:', error);

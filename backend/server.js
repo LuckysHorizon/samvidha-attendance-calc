@@ -256,59 +256,81 @@ app.post('/fetch-class-attendance', async (req, res) => {
 
     // Navigate to course content page
     await page.goto('https://samvidha.iare.ac.in/home?action=course_content', { waitUntil: 'networkidle2' });
-    // Wait for the table or fallback to a longer wait
-    try {
-      await page.waitForSelector('table.table', { timeout: 10000 });
-    } catch (e) {
-      await page.waitForTimeout(3000); // fallback wait
-    }
-    // Scrape attendance data from the table
-    const attendanceRows = await page.evaluate(() => {
+    
+    // Wait for the table
+    await page.waitForSelector('table.table', { timeout: 10000 });
+
+    // Scrape course attendance data
+    const courseData = await page.evaluate(() => {
+      const courses = [];
+      let currentCourse = null;
+      
+      // Get all rows from the table
       const rows = Array.from(document.querySelectorAll('table.table tbody tr'));
-      return rows.map(row => {
-        const cells = row.querySelectorAll('td');
+      
+      rows.forEach(row => {
+        // Check if this is a course header row (pink background)
+        const courseHeader = row.querySelector('th.bg-pink');
+        if (courseHeader) {
+          if (currentCourse) {
+            courses.push(currentCourse);
+          }
+          currentCourse = {
+            courseName: courseHeader.textContent.trim(),
+            classes: []
+          };
+        } 
+        // If not a header row and we have a current course, this is a class entry
+        else if (currentCourse && row.cells.length > 0) {
+          const cells = row.cells;
+          if (cells.length >= 5) { // Ensure we have enough cells
+            currentCourse.classes.push({
+              serialNo: cells[0]?.textContent.trim(),
+              date: cells[1]?.textContent.trim(),
+              period: cells[2]?.textContent.trim(),
+              topicsCovered: cells[3]?.textContent.trim(),
+              status: cells[4]?.textContent.trim().toUpperCase(),
+              youtubeLink: cells[5]?.textContent.trim(),
+              powerpoint: cells[6]?.querySelector('a')?.href || ''
+            });
+          }
+        }
+      });
+      
+      // Don't forget to push the last course
+      if (currentCourse) {
+        courses.push(currentCourse);
+      }
+
+      // Calculate statistics for each course
+      return courses.map(course => {
+        const totalClasses = course.classes.length;
+        const presentClasses = course.classes.filter(c => c.status === 'PRESENT').length;
+        const absentClasses = course.classes.filter(c => c.status === 'ABSENT').length;
+        const attendancePercentage = totalClasses > 0 ? ((presentClasses / totalClasses) * 100).toFixed(2) : '0.00';
+        
         return {
-          date: cells[1]?.innerText.trim(),
-          period: cells[2]?.innerText.trim(),
-          topic: cells[3]?.innerText.trim(),
-          status: cells[4]?.innerText.trim().toUpperCase()
+          ...course,
+          statistics: {
+            totalClasses,
+            presentClasses,
+            absentClasses,
+            attendancePercentage
+          }
         };
       });
     });
 
-    // Aggregate attendance by topic
-    const topicMap = {};
-    attendanceRows.forEach(row => {
-      const topic = row.topic || 'Unknown';
-      if (!topicMap[topic]) {
-        topicMap[topic] = { topic, total: 0, present: 0, absent: 0 };
-      }
-      topicMap[topic].total++;
-      if (row.status === 'PRESENT') topicMap[topic].present++;
-      if (row.status === 'ABSENT') topicMap[topic].absent++;
-    });
-
-    const classAttendanceData = Object.values(topicMap).map(topic => ({
-      subjectName: topic.topic,
-      totalClasses: topic.total,
-      classesAttended: topic.present,
-      percentage: topic.total > 0 ? ((topic.present / topic.total) * 100).toFixed(2) : 0,
-      attendanceInfo: `${topic.present}/${topic.total} classes`,
-      absent: topic.absent
-    }));
-
-    if (classAttendanceData.length === 0) {
-      throw new Error('No attendance data found. Please check if you have access to the course content page.');
+    if (courseData.length === 0) {
+      throw new Error('No course data found');
     }
 
-    res.json({ classAttendanceData });
+    res.json({ courseData });
   } catch (error) {
-    console.error('Error in fetch-class-attendance:', error.message);
-    res.status(500).json({ error: 'Failed to fetch class attendance data: ' + error.message });
+    console.error('Error in fetch-class-attendance:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch class attendance data' });
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browserPool.releaseBrowser(browser);
   }
 });
 
