@@ -208,76 +208,106 @@
     document.getElementById('daysNeeded').textContent = attendanceData.daysNeeded;
 
     // Static Circular Chart
-    const ctx = document.getElementById('attendanceChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Present', 'Absent'],
-        datasets: [{
-          data: [attendanceData.present, attendanceData.absent],
-          backgroundColor: [
-            'linear-gradient(90deg, #10b981, #34d399)', // Gradient for Present
-            'linear-gradient(90deg, #ef4444, #f87171)'  // Gradient for Absent
-          ].map(gradient => {
-            const grad = ctx.createLinearGradient(0, 0, 200, 0);
-            const [start, end] = gradient.match(/#[\da-f]{6}/gi);
-            grad.addColorStop(0, start);
-            grad.addColorStop(1, end);
-            return grad;
-          }),
-          borderWidth: 2,
-          borderColor: 'rgba(255, 255, 255, 0.3)',
-          hoverOffset: 0 // Disable hover animation
-        }]
-      },
-      options: {
-        responsive: true,
-        cutout: '70%',
-        animation: false, // Disable all animations
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: {
-              font: { size: 12 },
-              color: '#d1d5db',
-              padding: 20
-            }
+    function initializeAttendanceChart() {
+      const canvas = document.getElementById('attendanceChart');
+      if (!canvas) {
+        console.error('Attendance chart canvas not found');
+        return;
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        console.error('Could not get canvas context');
+        return;
+      }
+
+      try {
+        new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Present', 'Absent'],
+            datasets: [{
+              data: [attendanceData.present, attendanceData.absent],
+              backgroundColor: [
+                'linear-gradient(90deg, #10b981, #34d399)', // Gradient for Present
+                'linear-gradient(90deg, #ef4444, #f87171)'  // Gradient for Absent
+              ].map(gradient => {
+                const grad = ctx.createLinearGradient(0, 0, 200, 0);
+                const [start, end] = gradient.match(/#[\da-f]{6}/gi);
+                grad.addColorStop(0, start);
+                grad.addColorStop(1, end);
+                return grad;
+              }),
+              borderWidth: 2,
+              borderColor: 'rgba(255, 255, 255, 0.3)',
+              hoverOffset: 0 // Disable hover animation
+            }]
           },
-          title: {
-            display: true,
-            text: 'Attendance Breakdown',
-            font: { size: 16, weight: 'bold' },
-            color: '#ffffff',
-            padding: { top: 10, bottom: 20 }
-          },
-          tooltip: {
-            enabled: true,
-            callbacks: {
-              label: function(context) {
-                const label = context.label || '';
-                const value = context.raw || 0;
-                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                const percentage = ((value / total) * 100).toFixed(1);
-                return `${label}: ${value} (${percentage}%)`;
+          options: {
+            responsive: true,
+            cutout: '70%',
+            animation: false, // Disable all animations
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  font: { size: 12 },
+                  color: '#d1d5db',
+                  padding: 20
+                }
+              },
+              title: {
+                display: true,
+                text: 'Attendance Breakdown',
+                font: { size: 16, weight: 'bold' },
+                color: '#ffffff',
+                padding: { top: 10, bottom: 20 }
+              },
+              tooltip: {
+                enabled: true,
+                callbacks: {
+                  label: function(context) {
+                    const label = context.label || '';
+                    const value = context.raw || 0;
+                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const percentage = ((value / total) * 100).toFixed(1);
+                    return `${label}: ${value} (${percentage}%)`;
+                  }
+                }
               }
             }
-          }
-        }
-      },
-      plugins: [{
-        id: 'centerText',
-        afterDraw(chart) {
-          const { ctx, width, height } = chart;
-          ctx.save();
-          ctx.font = 'bold 18px Inter';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#3b82f6';
-          const percentage = attendanceData.attendancePercentage;
-          ctx.fillText(`${percentage}%`, width / 2, height / 2);
-          ctx.restore();
-        }
-      }]
+          },
+          plugins: [{
+            id: 'centerText',
+            afterDraw(chart) {
+              const { ctx, width, height } = chart;
+              ctx.save();
+              ctx.font = 'bold 18px Inter';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = '#3b82f6';
+              const percentage = attendanceData.attendancePercentage;
+              ctx.fillText(`${percentage}%`, width / 2, height / 2);
+              ctx.restore();
+            }
+          }]
+        });
+      } catch (error) {
+        console.error('Error initializing attendance chart:', error);
+      }
+    }
+
+    // Initialize charts after DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+      // Populate Summary Cards
+      document.getElementById('totalClasses').textContent = attendanceData.totalClasses;
+      document.getElementById('present').textContent = attendanceData.present;
+      document.getElementById('absent').textContent = attendanceData.absent;
+      document.getElementById('attendancePercentage').textContent = attendanceData.attendancePercentage + '%';
+      document.getElementById('daysNeeded').textContent = attendanceData.daysNeeded;
+
+      // Initialize the attendance chart
+      initializeAttendanceChart();
     });
 
     // Class Attendance Chart
@@ -584,44 +614,60 @@
       // Update chart
       if (currentModalChart) {
         currentModalChart.destroy();
+        currentModalChart = null;
       }
 
-      const ctx = document.getElementById('modalAttendanceChart').getContext('2d');
-      currentModalChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: ['Present', 'Absent'],
-          datasets: [{
-            data: [course.statistics.presentClasses, course.statistics.absentClasses],
-            backgroundColor: ['rgba(34, 197, 94, 0.8)', 'rgba(239, 68, 68, 0.8)'],
-            borderColor: ['rgb(34, 197, 94)', 'rgb(239, 68, 68)'],
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: true,
-          cutout: '75%',
-          layout: {
-            padding: 10
+      try {
+        const canvas = document.getElementById('modalAttendanceChart');
+        if (!canvas) {
+          console.error('Modal attendance chart canvas not found');
+          return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          console.error('Could not get modal canvas context');
+          return;
+        }
+
+        currentModalChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Present', 'Absent'],
+            datasets: [{
+              data: [course.statistics.presentClasses, course.statistics.absentClasses],
+              backgroundColor: ['rgba(34, 197, 94, 0.8)', 'rgba(239, 68, 68, 0.8)'],
+              borderColor: ['rgb(34, 197, 94)', 'rgb(239, 68, 68)'],
+              borderWidth: 1
+            }]
           },
-          plugins: {
-            legend: {
-              display: true,
-              position: 'bottom',
-              labels: {
-                boxWidth: 12,
-                padding: 10,
-                font: {
-                  size: 11,
-                  family: 'Inter'
-                },
-                color: '#9ca3af'
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '75%',
+            layout: {
+              padding: 10
+            },
+            plugins: {
+              legend: {
+                display: true,
+                position: 'bottom',
+                labels: {
+                  boxWidth: 12,
+                  padding: 10,
+                  font: {
+                    size: 11,
+                    family: 'Inter'
+                  },
+                  color: '#9ca3af'
+                }
               }
             }
           }
-        }
-      });
+        });
+      } catch (error) {
+        console.error('Error initializing modal chart:', error);
+      }
 
       modal.classList.remove('hidden');
     }
