@@ -84,7 +84,7 @@ async function loginToSamvidha(username, password) {
   let page;
   try {
     browser = await browserPool.getBrowser();
-    page = await browser.newPage();
+    page = await browserPool.getPage();
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
@@ -147,7 +147,7 @@ async function loginToSamvidha(username, password) {
 
     return { browser, page };
   } catch (error) {
-    if (page) await page.close();
+    if (page) await browserPool.releasePage(page);
     if (browser) await browserPool.releaseBrowser(browser);
     logger.error('Login error:', {
       error: error.message,
@@ -229,16 +229,18 @@ app.post('/fetch-attendance', async (req, res) => {
       details: attendanceData.details
     };
 
-    // Cache the response
-    attendanceCache.set(cacheKey, responseData);
+    // Clean up
+    await browserPool.releasePage(page);
+    await browserPool.releaseBrowser(browser);
 
+    // Cache and return response
+    attendanceCache.set(cacheKey, responseData);
     res.json(responseData);
   } catch (error) {
-    console.error('Error in fetch-attendance:', error.message);
-    res.status(500).json({ error: 'Failed to fetch attendance data: ' + error.message });
-  } finally {
-    if (page) await page.close();
+    if (page) await browserPool.releasePage(page);
     if (browser) await browserPool.releaseBrowser(browser);
+    logger.error('Error in fetch-attendance:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance data: ' + error.message });
   }
 });
 
@@ -250,9 +252,11 @@ app.post('/fetch-class-attendance', async (req, res) => {
   }
 
   let browser;
+  let page;
   try {
-    const { browser: b, page } = await loginToSamvidha(username, password);
+    const { browser: b, page: p } = await loginToSamvidha(username, password);
     browser = b;
+    page = p;
 
     // Navigate to course content page
     await page.goto('https://samvidha.iare.ac.in/home?action=course_content', { waitUntil: 'networkidle2' });
@@ -325,12 +329,16 @@ app.post('/fetch-class-attendance', async (req, res) => {
       throw new Error('No course data found');
     }
 
+    // Clean up
+    await browserPool.releasePage(page);
+    await browserPool.releaseBrowser(browser);
+
     res.json({ courseData });
   } catch (error) {
-    console.error('Error in fetch-class-attendance:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch class attendance data' });
-  } finally {
+    if (page) await browserPool.releasePage(page);
     if (browser) await browserPool.releaseBrowser(browser);
+    logger.error('Error in fetch-class-attendance:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch class attendance data' });
   }
 });
 

@@ -254,12 +254,12 @@ class PagePool {
 // Enhanced browser pool for persistent browsers
 class PersistentBrowserPool {
   constructor(options = {}) {
-    this.maxBrowsers = options.maxBrowsers || parseInt(process.env.BROWSER_POOL_MAX) || 1;
-    this.minBrowsers = options.minBrowsers || parseInt(process.env.BROWSER_POOL_MIN) || 1;
-    this.browsers = [];
-    this.pagePools = new Map();
-    this.currentIndex = 0;
-    this.isInitialized = false;
+    this.minBrowsers = options.minBrowsers || 1;
+    this.maxBrowsers = options.maxBrowsers || 1;
+    this.browsers = new Set();
+    this.pagePool = null;
+    this.initialized = false;
+    this.initializing = false;
     this.healthCheckInterval = null;
     this.initializationPromise = null;
   }
@@ -269,7 +269,7 @@ class PersistentBrowserPool {
       return this.initializationPromise;
     }
 
-    if (this.isInitialized) return;
+    if (this.initialized) return;
 
     this.initializationPromise = this._doInitialize();
     return this.initializationPromise;
@@ -282,7 +282,7 @@ class PersistentBrowserPool {
       await this.createBrowser();
     }
     
-    this.isInitialized = true;
+    this.initialized = true;
     this.startHealthCheck();
     
     logger.info('Persistent browser pool initialized successfully');
@@ -300,8 +300,8 @@ class PersistentBrowserPool {
       const pagePool = new PagePool(browser, 5);
       await pagePool.initialize();
       
-      this.browsers.push(browser);
-      this.pagePools.set(browser, pagePool);
+      this.browsers.add(browser);
+      this.pagePool = pagePool;
       
       // Handle browser disconnect - but try to recreate
       browser.on('disconnected', async () => {
@@ -314,7 +314,7 @@ class PersistentBrowserPool {
         logger.error('Browser error:', error);
       });
 
-      logger.info(`Persistent browser created successfully. Pool size: ${this.browsers.length}`);
+      logger.info(`Persistent browser created successfully. Pool size: ${this.browsers.size}`);
       return browser;
     } catch (error) {
       logger.error('Failed to create persistent browser:', error);
@@ -325,20 +325,17 @@ class PersistentBrowserPool {
   async handleBrowserDisconnect(disconnectedBrowser) {
     try {
       // Remove from arrays
-      const index = this.browsers.indexOf(disconnectedBrowser);
-      if (index > -1) {
-        this.browsers.splice(index, 1);
-      }
+      this.browsers.delete(disconnectedBrowser);
       
       // Clean up page pool
-      const pagePool = this.pagePools.get(disconnectedBrowser);
+      const pagePool = this.pagePool;
       if (pagePool) {
         await pagePool.closeAll();
-        this.pagePools.delete(disconnectedBrowser);
+        this.pagePool = null;
       }
 
       // Create replacement browser if we're below minimum
-      if (this.browsers.length < this.minBrowsers) {
+      if (this.browsers.size < this.minBrowsers) {
         logger.info('Recreating browser to maintain minimum pool size');
         await this.createBrowser();
       }
@@ -348,13 +345,12 @@ class PersistentBrowserPool {
   }
 
   async getBrowser() {
-    if (!this.isInitialized) {
+    if (!this.initialized) {
       await this.initialize();
     }
 
     // Find a connected browser
-    for (let i = 0; i < this.browsers.length; i++) {
-      const browser = this.browsers[i];
+    for (const browser of this.browsers) {
       if (browser && browser.isConnected()) {
         return browser;
       }
@@ -367,7 +363,7 @@ class PersistentBrowserPool {
 
   async getPage() {
     const browser = await this.getBrowser();
-    const pagePool = this.pagePools.get(browser);
+    const pagePool = this.pagePool;
     
     if (!pagePool) {
       logger.error('No page pool found for browser');
@@ -379,11 +375,11 @@ class PersistentBrowserPool {
 
   async releasePage(page) {
     // Find the browser this page belongs to
-    for (const [browser, pagePool] of this.pagePools.entries()) {
-      if (browser.isConnected()) {
+    for (const browser of this.browsers) {
+      if (browser && browser.isConnected()) {
         const pages = await browser.pages();
         if (pages.includes(page)) {
-          await pagePool.releasePage(page);
+          await this.pagePool.releasePage(page);
           return;
         }
       }
@@ -416,7 +412,7 @@ class PersistentBrowserPool {
   async performHealthCheck() {
     logger.debug('Performing health check');
     
-    const connectedBrowsers = this.browsers.filter(b => b && b.isConnected());
+    const connectedBrowsers = Array.from(this.browsers);
     
     if (connectedBrowsers.length < this.minBrowsers) {
       logger.warn(`Only ${connectedBrowsers.length} browsers connected, minimum is ${this.minBrowsers}`);
@@ -452,12 +448,7 @@ class PersistentBrowserPool {
     }
 
     // Close all page pools first
-    const pagePoolPromises = Array.from(this.pagePools.values()).map(pool => pool.closeAll());
-    await Promise.all(pagePoolPromises);
-    this.pagePools.clear();
-
-    // Then close browsers
-    const closePromises = this.browsers.map(async (browser) => {
+    const pagePoolPromises = Array.from(this.browsers).map(async (browser) => {
       try {
         if (browser && browser.isConnected()) {
           await browser.close();
@@ -467,28 +458,37 @@ class PersistentBrowserPool {
       }
     });
 
-    await Promise.all(closePromises);
-    this.browsers = [];
-    this.isInitialized = false;
+    await Promise.all(pagePoolPromises);
+    this.browsers.clear();
+    this.pagePool = null;
+    this.initialized = false;
     this.initializationPromise = null;
     
     logger.info('All browsers closed');
   }
 
   getPoolStatus() {
-    const browserStatus = this.browsers.map(browser => ({
+    const browserStatus = Array.from(this.browsers).map(browser => ({
       connected: browser ? browser.isConnected() : false,
-      pagePool: this.pagePools.get(browser)?.getStatus() || null
+      pagePool: this.pagePool?.getStatus() || null
     }));
 
     return {
-      totalBrowsers: this.browsers.length,
-      connectedBrowsers: this.browsers.filter(b => b && b.isConnected()).length,
+      totalBrowsers: this.browsers.size,
+      connectedBrowsers: this.browsers.size,
       maxBrowsers: this.maxBrowsers,
       minBrowsers: this.minBrowsers,
-      isInitialized: this.isInitialized,
+      isInitialized: this.initialized,
       browsers: browserStatus
     };
+  }
+
+  async releaseBrowser(browser) {
+    // Instead of actually releasing the browser, we'll just release its pages
+    // since we're maintaining a persistent pool
+    if (this.pagePool) {
+      await this.pagePool.closeAll();
+    }
   }
 }
 
