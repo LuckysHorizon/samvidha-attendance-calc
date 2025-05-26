@@ -5,17 +5,15 @@
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
+    "build": "node install-chrome.js",
     "dev": "nodemon backend/server.js",
     "install:prod": "npm ci --only=production",
     "prod": "NODE_ENV=production node backend/server.js",
     "test:prod": "node test-prod.js",
-    "postinstall": "node -e \"try { require('fs').mkdirSync('logs', { recursive: true }); } catch(e) { if(e.code !== 'EEXIST') throw e; }\"",
-    "docker:build": "docker build -t attendance-calculator .",
-    "docker:run": "docker run -p 3000:3000 attendance-calculator"
+    "postinstall": "node -e \"try { require('fs').mkdirSync('logs', { recursive: true }); } catch(e) { if(e.code !== 'EEXIST') throw e; }\" && node install-chrome.js"
   },
   "dependencies": {
     "@puppeteer/browsers": "2.3.0",
-    "attendance-calculator": "file:",
     "body-parser": "1.20.3",
     "compression": "^1.7.4",
     "cookie": "0.7.0",
@@ -45,8 +43,5 @@
   "private": true,
   "config": {
     "puppeteer_skip_chromium_download": true
-  },
-  "resolutions": {
-    "path-to-regexp": "0.1.7"
   }
 }

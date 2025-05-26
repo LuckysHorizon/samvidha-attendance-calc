@@ -1,327 +1,263 @@
-const puppeteer = require('puppeteer-core');
-const genericPool = require('generic-pool');
-const os = require('os');
+const puppeteer = require('puppeteer');
+const winston = require('winston');
 
-// Dynamic pool sizing based on available system resources
-const calculatePoolSize = () => {
-  const totalMemoryGB = os.totalmem() / (1024 * 1024 * 1024);
-  const freeMemoryGB = os.freemem() / (1024 * 1024 * 1024);
-  const cpuCount = os.cpus().length;
-  
-  // More conservative pool sizing for stability
-  const maxByMemory = Math.floor(freeMemoryGB / 0.75); // Increased memory per instance
-  const maxByCPU = Math.max(1, Math.floor(cpuCount / 2)); // More conservative CPU usage
-  
-  return Math.min(maxByMemory, maxByCPU, 3); // Cap at 3 instances for stability
-};
+// Configure logger
+const logger = winston.createLogger({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'browser-pool' },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.simple()
+    })
+  ]
+});
 
-const POOL_MAX = parseInt(process.env.BROWSER_POOL_MAX) || calculatePoolSize();
-const POOL_MIN = parseInt(process.env.BROWSER_POOL_MIN) || Math.max(1, Math.floor(POOL_MAX / 2));
-
-// Reusable page configuration
-const configureNewPage = async (page) => {
-  await page.setRequestInterception(true);
-  page.on('request', (request) => {
-    const resourceType = request.resourceType();
-    const url = request.url();
-    
-    if (['image', 'stylesheet', 'font', 'media'].includes(resourceType) ||
-        url.includes('google-analytics') ||
-        url.includes('doubleclick.net') ||
-        url.includes('facebook.com')) {
-      request.abort();
-    } else {
-      request.continue();
-    }
-  });
-
-  // Optimize page settings
-  await page.setCacheEnabled(true); // Enable cache for better performance
-  await page.setBypassCSP(true);
-  
-  // Use environment variables for timeouts with fallbacks
-  const navigationTimeout = parseInt(process.env.NAVIGATION_TIMEOUT) || 60000;
-  const requestTimeout = parseInt(process.env.REQUEST_TIMEOUT) || 60000;
-  
-  await page.setDefaultNavigationTimeout(navigationTimeout);
-  await page.setDefaultTimeout(requestTimeout);
-
-  return page;
-};
-
-// Function to get Chrome path based on OS
+// Determine Chrome executable path based on environment
 function getChromePath() {
-  switch (os.platform()) {
-    case 'win32':
-      return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-    case 'darwin':
-      return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-    default:
-      return process.env.CHROME_PATH || '/usr/bin/google-chrome';
+  if (process.env.RENDER) {
+    // Render environment
+    return '/opt/render/project/.render/chrome/opt/google/chrome/google-chrome';
+  } else if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    // Custom path from environment
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  } else {
+    // Local development - let Puppeteer handle it
+    return null;
   }
 }
 
+// Optimized browser launch options for different environments
+function getBrowserOptions() {
+  const isWindows = process.platform === 'win32';
+  const isRender = process.env.RENDER;
+  
+  const baseOptions = {
+    headless: process.env.NODE_ENV === 'production' ? 'new' : false, // Visible in development
+    defaultViewport: null,
+    args: []
+  };
+
+  if (isRender) {
+    // Render-specific options
+    baseOptions.headless = 'new';
+    baseOptions.args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-extensions',
+      '--disable-default-apps',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--disable-features=TranslateUI',
+      '--disable-ipc-flooding-protection',
+      '--memory-pressure-off',
+      '--max_old_space_size=512',
+      '--disable-web-security',
+      '--disable-features=VizDisplayCompositor'
+    ];
+  } else if (isWindows) {
+    // Windows-specific options for better stability
+    baseOptions.args = [
+      '--disable-web-security',
+      '--disable-features=VizDisplayCompositor',
+      '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--disable-extensions',
+      '--disable-default-apps'
+    ];
+  } else {
+    // Linux/Mac options
+    baseOptions.args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
+    ];
+  }
+
+  const chromePath = getChromePath();
+  if (chromePath) {
+    baseOptions.executablePath = chromePath;
+  }
+
+  return baseOptions;
+}
+
+// Enhanced browser pool for better performance
 class BrowserPool {
-  constructor() {
+  constructor(options = {}) {
+    this.maxBrowsers = options.maxBrowsers || parseInt(process.env.BROWSER_POOL_MAX) || 2;
+    this.minBrowsers = options.minBrowsers || parseInt(process.env.BROWSER_POOL_MIN) || 1;
     this.browsers = [];
-    this.maxBrowsers = 3;
-    this.disconnectionTimeout = 300000; // 5 minutes
-    this.initializePool();
+    this.currentIndex = 0;
+    this.isInitialized = false;
   }
 
-  initializePool() {
-    const factory = {
-      create: async () => {
-        try {
-          const browser = await puppeteer.launch({
-            headless: 'new',
-            executablePath: getChromePath(),
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-accelerated-2d-canvas',
-              '--disable-gpu',
-              '--window-size=1920,1080'
-            ]
-          });
+  async initialize() {
+    if (this.isInitialized) return;
 
-          const browserEntry = {
-            browser,
-            inUse: true
-          };
-
-          this.browsers.push(browserEntry);
-          return browser;
-        } catch (error) {
-          console.error('Error creating browser instance:', error);
-          throw error;
-        }
-      },
-      destroy: async (browser) => {
-        try {
-          if (!browser.isConnected()) {
-            console.log('Browser already disconnected, skipping normal cleanup');
-            return;
-          }
-
-          await browser.close();
-        } catch (error) {
-          console.error('Error during browser cleanup:', error);
-          try {
-            if (browser.process() != null) {
-              browser.process().kill('SIGKILL');
-            }
-          } catch (e) {
-            console.error('Error during force cleanup:', e);
-          }
-        }
-      },
-      validate: async (browser) => {
-        try {
-          const isValid = browser.isConnected();
-          return isValid;
-        } catch (error) {
-          return false;
-        }
-      }
-    };
-
-    const idleTimeoutMillis = parseInt(process.env.POOL_IDLE_TIMEOUT) || 300000; // 5 minutes
-    const acquireTimeoutMillis = parseInt(process.env.POOL_ACQUIRE_TIMEOUT) || 120000; // 2 minutes
-    const evictionRunIntervalMillis = parseInt(process.env.POOL_EVICTION_INTERVAL) || 60000; // 1 minute
-
-    this.pool = genericPool.createPool(factory, {
-      max: POOL_MAX,
-      min: POOL_MIN,
-      testOnBorrow: true,
-      acquireTimeoutMillis: acquireTimeoutMillis,
-      idleTimeoutMillis: idleTimeoutMillis,
-      evictionRunIntervalMillis: evictionRunIntervalMillis,
-      numTestsPerEvictionRun: 3,
-      autostart: true,
-      fifo: true, // Changed to true for better resource utilization
-      priorityRange: 1,
-      maxWaitingClients: POOL_MAX * 2,
-      validateOnBorrow: true,
-    });
-
-    this.startHealthCheck();
-  }
-
-  startHealthCheck() {
-    setInterval(async () => {
-      try {
-        for (const browser of this.browsers) {
-          if (!browser.browser.isConnected()) {
-            await this.handleDisconnection(browser.browser);
-          }
-        }
-      } catch (error) {
-        console.error('Error during health check:', error);
-      }
-    }, 30000); // Check every 30 seconds
+    logger.info(`Initializing browser pool with ${this.minBrowsers} browsers`);
+    
+    for (let i = 0; i < this.minBrowsers; i++) {
+      await this.createBrowser();
+    }
+    
+    this.isInitialized = true;
+    logger.info('Browser pool initialized successfully');
   }
 
   async getBrowser() {
-    try {
-      // Try to reuse an existing browser
-      const availableBrowser = this.browsers.find(b => !b.inUse);
-      if (availableBrowser) {
-        availableBrowser.inUse = true;
-        this.resetDisconnectionTimer(availableBrowser);
-        return availableBrowser.browser;
-      }
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
 
-      // Create new browser if pool isn't full
-      if (this.browsers.length < this.maxBrowsers) {
-        const browser = await this.createBrowser();
-        const browserWrapper = {
-          browser,
-          inUse: true,
-          disconnectionTimer: null
-        };
-        this.browsers.push(browserWrapper);
-        this.resetDisconnectionTimer(browserWrapper);
+    if (this.browsers.length === 0) {
+      await this.createBrowser();
+    }
+
+    // Find a connected browser
+    for (let i = 0; i < this.browsers.length; i++) {
+      const browser = this.browsers[i];
+      if (browser && browser.isConnected()) {
+        this.currentIndex = (this.currentIndex + 1) % this.browsers.length;
         return browser;
       }
+    }
 
-      // Wait for a browser to become available
-      return new Promise((resolve) => {
-        const checkInterval = setInterval(async () => {
-          const freeBrowser = this.browsers.find(b => !b.inUse);
-          if (freeBrowser) {
-            clearInterval(checkInterval);
-            freeBrowser.inUse = true;
-            this.resetDisconnectionTimer(freeBrowser);
-            resolve(freeBrowser.browser);
-          }
-        }, 1000);
+    // If no connected browsers, create a new one
+    return await this.createBrowser();
+  }
+
+  async createBrowser() {
+    try {
+      logger.info('Creating new browser instance');
+      const options = getBrowserOptions();
+      logger.info('Browser options:', options);
+      
+      const browser = await puppeteer.launch(options);
+      
+      // Test browser connection immediately
+      const pages = await browser.pages();
+      if (pages.length === 0) {
+        await browser.newPage();
+      }
+      
+      this.browsers.push(browser);
+      
+      // Handle browser disconnect
+      browser.on('disconnected', () => {
+        logger.warn('Browser disconnected, removing from pool');
+        const index = this.browsers.indexOf(browser);
+        if (index > -1) {
+          this.browsers.splice(index, 1);
+        }
       });
+
+      // Handle browser errors
+      browser.on('error', (error) => {
+        logger.error('Browser error:', error);
+      });
+
+      // Handle target errors
+      browser.on('targetdestroyed', (target) => {
+        logger.warn('Browser target destroyed:', target.url());
+      });
+
+      logger.info(`Browser created successfully. Pool size: ${this.browsers.length}`);
+      return browser;
     } catch (error) {
-      console.error('Error getting browser:', error);
+      logger.error('Failed to create browser:', error);
       throw error;
     }
   }
 
-  async createBrowser() {
-    const args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      '--window-size=1920x1080'
-    ];
-
-    return await puppeteer.launch({
-      executablePath: getChromePath(),
-      headless: 'new',
-      args,
-      defaultViewport: { width: 1920, height: 1080 }
-    });
-  }
-
-  resetDisconnectionTimer(browserWrapper) {
-    if (browserWrapper.disconnectionTimer) {
-      clearTimeout(browserWrapper.disconnectionTimer);
-    }
-
-    browserWrapper.disconnectionTimer = setTimeout(async () => {
-      await this.handleDisconnection(browserWrapper);
-    }, this.disconnectionTimeout);
-  }
-
-  async handleDisconnection(browserWrapper) {
-    try {
-      const index = this.browsers.indexOf(browserWrapper);
-      if (index !== -1) {
-        if (browserWrapper.browser) {
-          try {
-            await browserWrapper.browser.close();
-          } catch (error) {
-            console.error('Error closing browser:', error);
-          }
-        }
-        this.browsers.splice(index, 1);
-      }
-    } catch (error) {
-      console.error('Error handling browser disconnection:', error);
-    }
-  }
-
   async releaseBrowser(browser) {
-    try {
-      const browserWrapper = this.browsers.find(b => b.browser === browser);
-      if (browserWrapper) {
-        browserWrapper.inUse = false;
-        this.resetDisconnectionTimer(browserWrapper);
+    // For now, we just keep the browser in the pool
+    // In a more sophisticated implementation, you might close it if pool is too large
+    if (this.browsers.length > this.maxBrowsers) {
+      try {
+        await browser.close();
+        const index = this.browsers.indexOf(browser);
+        if (index > -1) {
+          this.browsers.splice(index, 1);
+        }
+        logger.info(`Browser closed. Pool size: ${this.browsers.length}`);
+      } catch (error) {
+        logger.error('Error closing browser:', error);
       }
-    } catch (error) {
-      console.error('Error releasing browser:', error);
     }
   }
 
-  async cleanup() {
-    try {
-      await Promise.all(
-        this.browsers.map(async (browserWrapper) => {
-          if (browserWrapper.disconnectionTimer) {
-            clearTimeout(browserWrapper.disconnectionTimer);
-          }
-          if (browserWrapper.browser) {
-            try {
-              await browserWrapper.browser.close();
-            } catch (error) {
-              console.error('Error closing browser during cleanup:', error);
-            }
-          }
-        })
-      );
-      this.browsers = [];
-    } catch (error) {
-      console.error('Error during browser pool cleanup:', error);
-    }
+  async closeAll() {
+    logger.info('Closing all browsers in pool');
+    const closePromises = this.browsers.map(async (browser) => {
+      try {
+        if (browser && browser.isConnected()) {
+          await browser.close();
+        }
+      } catch (error) {
+        logger.error('Error closing browser:', error);
+      }
+    });
+
+    await Promise.all(closePromises);
+    this.browsers = [];
+    this.isInitialized = false;
+    logger.info('All browsers closed');
   }
 
-  getStats() {
+  getPoolStatus() {
     return {
-      active: this.browsers.length,
-      max: POOL_MAX,
-      min: POOL_MIN,
-      spareResourceCapacity: POOL_MAX - this.browsers.length,
-      totalSystemMemory: os.totalmem(),
-      freeSystemMemory: os.freemem(),
+      totalBrowsers: this.browsers.length,
+      connectedBrowsers: this.browsers.filter(b => b && b.isConnected()).length,
+      maxBrowsers: this.maxBrowsers,
+      minBrowsers: this.minBrowsers,
+      isInitialized: this.isInitialized
     };
   }
 }
 
-const browserPool = new BrowserPool();
+// Create singleton browser pool
+const browserPool = new BrowserPool({
+  maxBrowsers: parseInt(process.env.BROWSER_POOL_MAX) || 2,
+  minBrowsers: parseInt(process.env.BROWSER_POOL_MIN) || 1
+});
 
 // Graceful shutdown handlers
-const cleanup = async (signal) => {
-  console.log(`Received ${signal}. Cleaning up...`);
-  try {
-    await browserPool.drain();
-    await browserPool.clear();
-    await browserPool.cleanup();
-    process.exit(0);
-  } catch (error) {
-    console.error('Error during cleanup:', error);
-    process.exit(1);
-  }
+const gracefulShutdown = async () => {
+  logger.info('Shutting down browser pool');
+  await browserPool.closeAll();
 };
 
-process.on('SIGTERM', () => cleanup('SIGTERM'));
-process.on('SIGINT', () => cleanup('SIGINT'));
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
-// Handle uncaught errors
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+// Handle uncaught exceptions
+process.on('uncaughtException', async (error) => {
+  logger.error('Uncaught Exception in browser pool:', error);
+  await gracefulShutdown();
+  process.exit(1);
 });
 
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+process.on('unhandledRejection', async (reason, promise) => {
+  logger.error('Unhandled Rejection in browser pool:', reason);
+  await gracefulShutdown();
+  process.exit(1);
 });
 
-module.exports = { browserPool }; 
+module.exports = {
+  browserPool,
+  getBrowserOptions,
+  getChromePath,
+  BrowserPool
+};

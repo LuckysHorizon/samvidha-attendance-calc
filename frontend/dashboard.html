@@ -413,13 +413,16 @@
       const courseCardsContainer = document.getElementById('courseCardsContainer');
       courseCardsContainer.innerHTML = '';
 
-      // Filter out internships and calculate overall statistics
+      // Filter out internships and courses with 0 classes, then calculate overall statistics
       const regularCourses = courseData.filter(course => 
-        !course.courseName.toLowerCase().includes('internship'));
+        !course.courseName.toLowerCase().includes('internship') && 
+        course.statistics.totalClasses > 0
+      );
       
       const totalCourses = regularCourses.length;
-      const averageAttendance = regularCourses.reduce((sum, course) => 
-        sum + parseFloat(course.statistics.attendancePercentage), 0) / totalCourses;
+      const averageAttendance = totalCourses > 0 ? 
+        (regularCourses.reduce((sum, course) => 
+          sum + parseFloat(course.statistics.attendancePercentage), 0) / totalCourses) : 0;
       const coursesBelow75 = regularCourses.filter(course => 
         parseFloat(course.statistics.attendancePercentage) < 75).length;
       const coursesAbove75 = totalCourses - coursesBelow75;

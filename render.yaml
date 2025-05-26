@@ -1,32 +1,24 @@
 services:
   - type: web
     name: attendance-calculator
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    region: singapore
-    plan: free
-    healthCheckPath: /health
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
         value: "true"
       - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/google-chrome
-      - key: CHROME_BIN
-        value: /usr/bin/google-chrome
+        value: /opt/render/project/.render/chrome/opt/google/chrome/google-chrome
       - key: NODE_OPTIONS
-        value: --max-old-space-size=512
+        value: "--max-old-space-size=512"
       - key: BROWSER_POOL_MAX
-        value: "2"
+        value: 2
       - key: BROWSER_POOL_MIN
-        value: "1"
+        value: 1
       - key: CACHE_TTL
-        value: "3600"
+        value: 3600
       - key: CACHE_MAX_KEYS
-        value: "1000"
-    scaling:
-      minInstances: 1
-      maxInstances: 1
-      targetMemoryPercent: 90
-      targetCPUPercent: 90
+        value: 1000
+    plan: free
