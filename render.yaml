@@ -14,11 +14,22 @@ services:
       - key: NODE_OPTIONS
         value: "--max-old-space-size=512"
       - key: BROWSER_POOL_MAX
-        value: 2
+        value: 3
       - key: BROWSER_POOL_MIN
         value: 1
       - key: CACHE_TTL
-        value: 3600
+        value: 7200
       - key: CACHE_MAX_KEYS
-        value: 1000
+        value: 2000
+      - key: COMPRESSION_LEVEL
+        value: 6
+      - key: REQUEST_TIMEOUT
+        value: 30000
+      - key: NAVIGATION_TIMEOUT
+        value: 30000
+      - key: SAMVIDHA_NAVIGATION_TIMEOUT
+        value: 30000
+      - key: SAMVIDHA_LOGIN_TIMEOUT
+        value: 30000
     plan: free
+    healthCheckPath: /health

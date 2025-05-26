@@ -58,24 +58,50 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
+// Optimize compression
+app.use(compression({
+  level: parseInt(process.env.COMPRESSION_LEVEL || '6'),
+  threshold: '1kb',
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
+
 // Middleware
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type']
+  allowedHeaders: ['Content-Type'],
+  maxAge: 7200 // Cache preflight requests for 2 hours
 }));
-app.use(express.json());
-app.use(compression());
+app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
 
-// Serve static files
-app.use(express.static(path.join(__dirname, '../frontend')));
-app.use('/css', express.static(path.join(__dirname, '../frontend/css')));
-app.use('/js', express.static(path.join(__dirname, '../frontend/js')));
+// Static file serving with caching
+const staticOptions = {
+  maxAge: '2h',
+  etag: true,
+  lastModified: true
+};
+app.use(express.static(path.join(__dirname, '../frontend'), staticOptions));
+app.use('/css', express.static(path.join(__dirname, '../frontend/css'), staticOptions));
+app.use('/js', express.static(path.join(__dirname, '../frontend/js'), staticOptions));
 
-// Health check endpoint
+// Health check endpoint with basic metrics
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy' });
+  const metrics = {
+    status: 'healthy',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    browserPool: {
+      activeBrowsers: browserPool.getActiveBrowserCount(),
+      activePages: browserPool.getActivePageCount()
+    }
+  };
+  res.status(200).json(metrics);
 });
 
 // Helper function to login and get browser session with improved error handling
@@ -85,12 +111,25 @@ async function loginToSamvidha(username, password) {
   try {
     browser = await browserPool.getBrowser();
     page = await browserPool.getPage();
+    
+    // Optimize page performance
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    await page.setRequestInterception(true);
+    
+    // Block unnecessary resources
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
 
-    // Set timeouts
-    page.setDefaultNavigationTimeout(parseInt(process.env.NAVIGATION_TIMEOUT || '60000'));
-    page.setDefaultTimeout(parseInt(process.env.REQUEST_TIMEOUT || '60000'));
+    // Set timeouts from environment variables
+    page.setDefaultNavigationTimeout(parseInt(process.env.NAVIGATION_TIMEOUT || '30000'));
+    page.setDefaultTimeout(parseInt(process.env.REQUEST_TIMEOUT || '30000'));
 
     // Navigate to login page with retry logic
     let retries = 3;
