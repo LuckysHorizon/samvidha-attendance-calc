@@ -297,14 +297,47 @@ app.post('/fetch-class-attendance', async (req, res) => {
     browser = b;
     page = p;
 
-    // Navigate to course content page
-    await page.goto('https://samvidha.iare.ac.in/home?action=course_content', { waitUntil: 'networkidle2' });
-    
-    // Wait for the table
-    await page.waitForSelector('table.table', { timeout: 10000 });
+    // Navigate to course content page with retry logic
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto('https://samvidha.iare.ac.in/home?action=course_content', { 
+          waitUntil: 'networkidle2',
+          timeout: parseInt(process.env.NAVIGATION_TIMEOUT || '30000')
+        });
+        
+        // Wait for the table and ensure the frame is attached
+        await page.waitForSelector('table.table', { 
+          timeout: 10000,
+          visible: true 
+        });
+        
+        // Verify page content is loaded
+        const tableExists = await page.evaluate(() => {
+          const table = document.querySelector('table.table');
+          return table && table.rows.length > 0;
+        });
+        
+        if (!tableExists) {
+          throw new Error('Course content table not found or empty');
+        }
+        
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw new Error('Failed to load course content: ' + error.message);
+        logger.warn('Retrying course content navigation:', { error: error.message, retriesLeft: retries });
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
 
-    // Scrape course attendance data
+    // Scrape course attendance data with frame check
     const courseData = await page.evaluate(() => {
+      // Verify we're in the correct frame context
+      if (!document.querySelector('table.table')) {
+        throw new Error('Course content table not found in current frame');
+      }
+
       const courses = [];
       let currentCourse = null;
       
@@ -327,15 +360,20 @@ app.post('/fetch-class-attendance', async (req, res) => {
         else if (currentCourse && row.cells.length > 0) {
           const cells = row.cells;
           if (cells.length >= 5) { // Ensure we have enough cells
-            currentCourse.classes.push({
-              serialNo: cells[0]?.textContent.trim(),
-              date: cells[1]?.textContent.trim(),
-              period: cells[2]?.textContent.trim(),
-              topicsCovered: cells[3]?.textContent.trim(),
-              status: cells[4]?.textContent.trim().toUpperCase(),
-              youtubeLink: cells[5]?.textContent.trim(),
+            const classEntry = {
+              serialNo: cells[0]?.textContent?.trim() || '',
+              date: cells[1]?.textContent?.trim() || '',
+              period: cells[2]?.textContent?.trim() || '',
+              topicsCovered: cells[3]?.textContent?.trim() || '',
+              status: cells[4]?.textContent?.trim()?.toUpperCase() || '',
+              youtubeLink: cells[5]?.textContent?.trim() || '',
               powerpoint: cells[6]?.querySelector('a')?.href || ''
-            });
+            };
+            
+            // Only add valid entries
+            if (classEntry.date && classEntry.status) {
+              currentCourse.classes.push(classEntry);
+            }
           }
         }
       });
@@ -364,20 +402,31 @@ app.post('/fetch-class-attendance', async (req, res) => {
       });
     });
 
-    if (courseData.length === 0) {
-      throw new Error('No course data found');
+    if (!Array.isArray(courseData) || courseData.length === 0) {
+      throw new Error('No valid course data found');
     }
 
     // Clean up
     await browserPool.releasePage(page);
     await browserPool.releaseBrowser(browser);
 
+    // Cache the course data
+    const cacheKey = `course_attendance_${username}`;
+    attendanceCache.set(cacheKey, { courseData });
+
     res.json({ courseData });
   } catch (error) {
     if (page) await browserPool.releasePage(page);
     if (browser) await browserPool.releaseBrowser(browser);
-    logger.error('Error in fetch-class-attendance:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch class attendance data' });
+    logger.error('Error in fetch-class-attendance:', {
+      error: error.message,
+      stack: error.stack,
+      username: username
+    });
+    res.status(500).json({ 
+      error: 'Failed to fetch class attendance data',
+      message: error.message
+    });
   }
 });
 
